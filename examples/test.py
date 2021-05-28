@@ -16,7 +16,7 @@ pd.set_option('display.max_rows', None)
 pd.set_option('display.width', None)
 
 
-address=r'C:\Users\A\Desktop\try.xlsx'
+address = r'./try.xlsx'
 portfolio_bond=excel_to_portfolio_bond(address)
 # print(portfolio_bond.get_cashflow())
 # print(portfolio_bond.get_cashflow('Agg'))

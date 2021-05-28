@@ -21,7 +21,7 @@ class Position_Bond:
         self.begin_ytm=bond.cleanprice_to_ytm(begin_date, begin_cleanprice)
 
         self.quantity=begin_quantity
-        self.RealDailyR=bond.AmortizedPrice_to_RealDailyR(begin_date, begin_cleanprice)
+        self.RealDailyR=bond.amortprice_to_dailyrate(begin_date, begin_cleanprice)
 
 
         self.cashflow_history_df=pd.DataFrame([[begin_date,-begin_quantity*self.begin_dirtyprice/100]],columns=['date','cash'])
@@ -62,11 +62,11 @@ class Position_Bond:
     def move_ytm(self, newdate, ytm=None, quantity_delta=None):
         if self.quantity>0:
 
-            while (self.date<newdate)&(self.date<self.bond.cashflow_df.iloc[-1,0]):
+            while (self.date<newdate)&(self.date<self.bond._cashflow_df.iloc[-1, 0]):
                 self.date+=datetime.timedelta(days=1)
                 #算现金流
-                if (self.date in list(self.bond.cashflow_df['date']))&(self.position_gain_df.empty == False):
-                    cash=self.bond.cashflow_df[self.bond.cashflow_df['date']==self.date].iloc[0,1]
+                if (self.date in list(self.bond._cashflow_df['date']))&(self.position_gain_df.empty == False):
+                    cash=self.bond._cashflow_df[self.bond._cashflow_df['date'] == self.date].iloc[0, 1]
                     cash= cash * self.position_gain_df.iloc[-1, 1] / 100
                     self.cashflow_history_df=self.cashflow_history_df.append([{'date':self.date,'cash':cash}],ignore_index=True,sort=False)
                 #算收益
@@ -93,7 +93,7 @@ class Position_Bond:
                     pass
                 else:
                     raise NotImplementedError("Unknown ACCOUNT_TYPE")
-            if self.date ==self.bond.cashflow_df.iloc[-1,0]:
+            if self.date ==self.bond._cashflow_df.iloc[-1, 0]:
                 ytm=np.nan
                 quantity_delta=-self.quantity
             if ytm:
@@ -113,7 +113,7 @@ class Position_Bond:
                 if self.quantity<0:
                     raise Exception('Not Enough Bond to Sell'+'(id:'+str(self.id)+')')
                 if self.date ==self.cashflow_history_df.iloc[-1,0]:
-                    self.cashflow_history_df.iloc[-1,1]+= -self.position_gain_df.iloc[-1, 3] * quantity_delta / 100 * (self.date != self.bond.cashflow_df.iloc[-1, 0])
+                    self.cashflow_history_df.iloc[-1,1]+= -self.position_gain_df.iloc[-1, 3] * quantity_delta / 100 * (self.date != self.bond._cashflow_df.iloc[-1, 0])
                 else:
                     self.cashflow_history_df=self.cashflow_history_df.append([{'date':self.date,'cash': -self.position_gain_df.iloc[-1, 3] * quantity_delta / 100}], ignore_index=True, sort=False)
                 self.position_gain_df.iloc[-1, 1]=self.quantity
