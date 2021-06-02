@@ -29,8 +29,9 @@ class CustomEnum(str, Enum, metaclass=CustomEnumMeta):
 
 class COUPON_TYPE(CustomEnum):
     REGULAR='附息'
-    ZERO='贴现'
-    DUE='到期一次还本付息'#TODO 现在算的到期还本付息的只能算一年的
+    ZERO='贴现'  # 贴现债券剩余期限不能超过1年
+    DUE='到期一次还本付息'  # TODO 现在算的到期还本付息债券不能超过1年
+
 class ACCOUNT_TYPE(CustomEnum):
     OCI='OCI'
     TPL='TPL'
