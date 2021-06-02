@@ -94,7 +94,7 @@ class Bond:
     求该Bond在指定日期、指定ytm的折现全价，算法采用央行规则
         Args:
             date(datetime): 指定日期
-            ytm(float): 指定ytm
+            ytm(float): 指定ytm，放大100倍，形如3.5
             full_info(Boolean): 是否返回折现全价现金流
         Returns:
             cashflow_df(DataFrame)：折现全价现金流
@@ -104,14 +104,14 @@ class Bond:
     def ytm_to_dirtyprice(self, date, ytm, full_info=False):
         cashflow_df = self.get_cashflow(date, 'Undelivered_Lastone')
         if cashflow_df.shape[0] <= 1:
-            if cashflow_df.iloc[0, 0] == date:  # 1刚好在到期日这天
+            if cashflow_df.iat[0, 0] == date:  # 1刚好在到期日这天
                 dirtyprice = 100
                 return dirtyprice
             else:  # 2晚于到期日
                 raise Exception('The bond is due' + '(' + self.code + ')')
         # 3到期日之前
-        interval_days = (cashflow_df.iloc[1, 0] - cashflow_df.iloc[0, 0]).days  # 当前付息区间的天数
-        t = (cashflow_df.iloc[1, 0] - date).days  # 距下一个付息日的天数
+        interval_days = (cashflow_df.iat[1, 0] - cashflow_df.iat[0, 0]).days  # 当前付息区间的天数
+        t = (cashflow_df.iat[1, 0] - date).days  # 距下一个付息日的天数
         cashflow_df = cashflow_df.iloc[1:, :]
         if self.coupon_type == COUPON_TYPE.REGULAR:
             if cashflow_df.shape[0] > 1:
@@ -119,11 +119,11 @@ class Bond:
                                            in range(cashflow_df.shape[0])]
             # 只剩下最后一个付息期
             elif cashflow_df.shape[0] == 1:
-                year_days = 366 if calendar.isleap(cashflow_df['date'].iloc[0].year) else 365 # 闰年366天，其余365天
+                year_days = 366 if calendar.isleap(cashflow_df['date'].iat[0].year) else 365 # 闰年366天，其余365天
                 cashflow_df['deflator'] = [1 / (1 + ytm / 100 * t / year_days)]
         # 剩余期限不超过1年的贴现债券、剩余期限不超过1年的到期还本付息债券
         elif self.coupon_type in [COUPON_TYPE.ZERO, COUPON_TYPE.DUE]:
-            year_days = 366 if calendar.isleap(cashflow_df['date'].iloc[0].year) else 365 # 闰年366天，其余365天
+            year_days = 366 if calendar.isleap(cashflow_df['date'].iat[0].year) else 365 # 闰年366天，其余365天
             cashflow_df['deflator'] = [1 / (1 + ytm / 100 * t / year_days)]
         cashflow_df['cash_deflated'] = cashflow_df['cash'] * cashflow_df['deflator']
         dirtyprice = cashflow_df['cash_deflated'].sum()

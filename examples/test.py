@@ -1,4 +1,6 @@
+# -*- coding: utf-8 -*-
 import pandas as pd
+import datetime
 
 from fxincome.const import COUPON_TYPE
 from fxincome.const import CASHFLOW_TYPE
@@ -24,3 +26,5 @@ portfolio_bond=excel_to_portfolio_bond(address)
 # print(portfolio_bond.get_position_gain('Agg'))
 # print(portfolio_bond.get_view())
 portfolio_bond.get_plot()
+result = portfolio_bond.get_view()
+result.to_csv(f"./result-{datetime.datetime.now().strftime('%Y%m%d-%H%M')}.csv", index=False, encoding='utf-8')
