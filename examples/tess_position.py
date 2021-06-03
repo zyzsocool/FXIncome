@@ -9,9 +9,9 @@ pd.set_option('display.width', None)
 import numpy as np
 from fxincome.asset import Bond
 from fxincome.position import Position_Bond
+pd.set_option('display.float_format',lambda x:'%.2f'%x)
 
-
-num=4
+num=1
 if num==0:
     code='200016'
     initial_date=datetime.datetime(2020,11,19)
@@ -68,16 +68,20 @@ if num==1:
     positon_bond=Position_Bond(num,bond,account_type,begin_quantity,begin_date,begin_cleanprice)
     # positon_bond.move(datetime.datetime(2022,8,23),3.12)
     # positon_bond.move_ytm(datetime.datetime(2022,2,21),3.14,-5000)
-    positon_bond.move_ytm(datetime.datetime(2022,2,22),3.14,-5000)
-    positon_bond.move_ytm(datetime.datetime(2022,7,23),3.1,-5000)
-    positon_bond.move_ytm(datetime.datetime(2022,8,22),3.14)
+    positon_bond.move_ytm(datetime.datetime(2022,2,22),3.14)
+    positon_bond.move_ytm(datetime.datetime(2022,2,23),3.1,-2000)
+    positon_bond.move_ytm(datetime.datetime(2022,2,24),3.14,-5000)
+    positon_bond.move_ytm(datetime.datetime(2022,2,25),3.14,-3000)
     positon_bond.move_ytm(datetime.datetime(2022,8,25))
 
-    print(positon_bond.gain)
-    print(positon_bond.get_cashflow('All'))
+    x=positon_bond.gain
+    x['test']=x.apply(lambda x:x['gain_sum']-x['interest']-x['market_dirtyprice']*x['quantity']/100,axis=1)
+    y=positon_bond.get_cashflow('All')
+    y['test']=y['cash'].cumsum()
+
+    print(x)
+    print(y)
     print(positon_bond.get_cashflow('All')['cash'].sum())
-    print(positon_bond.__date)
-    print(positon_bond.quantity)
 if num==2:
     code='120015'
     initial_date=datetime.datetime(2012,8,23)
