@@ -35,7 +35,7 @@ if num==0:
     positon_bond.move(datetime.datetime(2021,11,23),3.12,-10000)
     positon_bond.move(datetime.datetime(2021,11,25),3.14)
     positon_bond.move(datetime.datetime(2021,11,28),3.14)
-    print(positon_bond.position_gain_df)
+    print(positon_bond.gain)
     print(positon_bond.get_cashflow('All'))
 
 
@@ -73,10 +73,10 @@ if num==1:
     positon_bond.move_ytm(datetime.datetime(2022,8,22),3.14)
     positon_bond.move_ytm(datetime.datetime(2022,8,25))
 
-    print(positon_bond.position_gain_df)
+    print(positon_bond.gain)
     print(positon_bond.get_cashflow('All'))
     print(positon_bond.get_cashflow('All')['cash'].sum())
-    print(positon_bond.date)
+    print(positon_bond.__date)
     print(positon_bond.quantity)
 if num==2:
     code='120015'
@@ -126,10 +126,10 @@ if num==3:
     # positon_bond.move_curve(datetime.datetime(2022,5,23),curve_df,-2000)
     # positon_bond.move_curve(datetime.datetime(2022,8,24))
 
-    print(positon_bond.position_gain_df)
+    print(positon_bond.gain)
     print(positon_bond.get_cashflow('All'))
     print(positon_bond.get_cashflow('All')['cash'].sum())
-    print(positon_bond.date)
+    print(positon_bond.__date)
     print(positon_bond.quantity)
 if num==4:
     code='120015'
@@ -161,9 +161,9 @@ if num==4:
     positon_bond.move_curve(datetime.datetime(2022, 2, 28), curve_df,-5000)
     positon_bond.move_curve(datetime.datetime(2022,3,1),curve_df,-5000)
     positon_bond.move_curve(datetime.datetime(2023, 3,2), curve_df)
-    print(positon_bond.position_gain_df)
+    print(positon_bond.gain)
     print(positon_bond.get_cashflow('All'))
     print(positon_bond.get_cashflow('All')['cash'].sum())
-    print(positon_bond.date)
+    print(positon_bond.__date)
     print(positon_bond.quantity)
 

@@ -61,7 +61,7 @@ class Portfolio_Bond():
         cashflow_list=[]
         position_gain_list=[]
         for position_id_i ,position_i in self.position_dic.items():
-            id=position_i.id
+            id=position_i.pid
             code=position_i.bond.code
             account_type=position_i.account_type
 
@@ -168,10 +168,8 @@ class Portfolio_Bond():
         result_df['quantity']=result_df['quantity'].fillna(method='ffill')
         result_df['quantity']=result_df.apply(lambda x:x['quantity'] if x['type']=='History' else np.nan ,axis=1)
 
-
-
-
         return result_df
+
     def get_plot(self):
         result_df=self.get_view()
         print(result_df)
