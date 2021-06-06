@@ -152,12 +152,14 @@ class Position_Bond:
                                                     ignore_index=True, sort=False)
 
                 elif self.account_type in [ACCOUNT_TYPE.OCI, ACCOUNT_TYPE.AC]:
-                    cost_cleanprice_before = (
-                        self.begin_cleanprice if self.gain.empty else self.gain.iloc[-1, 5])
-                    interest = cost_cleanprice_before * self.real_daily_rate / 100 * self.quantity / 100 if coupon != 0 else 0
-                    # cost_cleanprice=cost_cleanprice_before+(interest-coupon)/self.quantity*100
-                    cost_cleanprice = cost_cleanprice_before * (1 + self.real_daily_rate / 100) - self.bond.get_dailycoupon(
-                        self.__date) if coupon != 0 else cost_cleanprice_before
+
+                    if self.gain.empty:
+                        cost_cleanprice=self.begin_cleanprice
+                    else:
+                        cost_cleanprice=self.gain.cost_cleanprice.iat[-1]* (1 + self.real_daily_rate / 100) - self.bond.get_dailycoupon(
+                            self.__date+datetime.timedelta(days=-1))
+                    interest = cost_cleanprice * self.real_daily_rate / 100 * self.quantity / 100 if coupon != 0 else 0
+
                     self.gain = self.gain.append([{'date': self.__date,
                                                    'quantity': self.quantity,
                                                    'coupon': coupon,
@@ -202,10 +204,10 @@ class Position_Bond:
                 self.gain.interest.iat[-1] = self.gain.interest.iat[-1] / old_quantity * self.quantity
                 # 由于当日卖出债券，计算价差时，卖出部分的债券的cost_cleanprice应取上一日
                 self.gain.price_gain.iat[-1] = (self.gain.market_cleanprice.iat[-1]
-                                                - self.gain.cost_cleanprice.iat[-2]) \
+                                                - self.gain.cost_cleanprice.iat[-1]) \
                                                * (-quantity_delta) / 100
                 self.gain.float_gain_sum.iat[-1] = (self.gain.market_cleanprice.iat[-1]
-                                                    - self.gain.cost_cleanprice.iat[-2]) \
+                                                    - self.gain.cost_cleanprice.iat[-1]) \
                                                    * self.quantity / 100
                 self.gain.dv01.iat[-1] = self.bond.ytm_to_dv01(self.__date, ytm) * self.quantity / 100
                 # self.gain.iloc[-1, 14] =0
