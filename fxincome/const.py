@@ -50,3 +50,69 @@ class POSITION_GAIN_VIEW_TYPE(CustomEnum):
 class DURARION_TYPE(CustomEnum):
     Macaulay='Macaulay'
     Modified='Modified'
+
+class RFC_PARAM:
+    ALL_FEATS = [
+        # 原始features
+        'date',
+        'close',
+        'fr007',
+        'cdb10y',
+        'fr0071y',
+        'fr0075y',
+        'usdcny',
+        # 10年国债收益率变种
+        'pct_chg',
+        'avg_chg_5',
+        'avg_chg_10',
+        'avg_chg_20',
+        'close_avg_5',
+        # 流动性指标变种
+        'fr007_chg_5',
+        'fr0071y_chg_5',
+        # 10年国债收益率与其他各种指标之间的差值
+        'spread_t1y',
+        'spread_cdb10y',
+        'spread_fr007',
+        'spread_fr0071y',
+        'spread_fr0075y',
+        'spread_usdcny',
+        # 其他各种指标之间的差值
+        'spread_fr0075y_fr0071y',
+        # 汇率变种
+        'usdcny_chg_5',
+        # label
+        'future',
+        'target'
+    ]
+
+    TRAIN_FEATS = [
+        # 原始features
+        'close',
+        'fr007',
+        # 'cdb10y',
+        # 'fr0071y',
+        'fr0075y',
+        # 'usdcny',
+        # 10年国债收益率变种
+        'pct_chg',
+        'avg_chg_5',
+        # 'avg_chg_10',
+        'avg_chg_20',
+        'close_avg_5',
+        # 流动性指标变种
+        'fr007_chg_5',
+        # 'fr0071y_chg_5',
+        # 10年国债收益率与其他各种指标之间的差值
+        'spread_t1y',
+        # 'spread_cdb10y',
+        'spread_fr007',
+        # 'spread_fr0071y',
+        'spread_fr0075y',
+        'spread_usdcny',
+        # 其他各种指标之间的差值
+        # 'spread_fr0075y_fr0071y',
+        # 汇率变种
+        'usdcny_chg_5',
+    ]
+    LABELS = ['target']
