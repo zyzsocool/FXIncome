@@ -1,4 +1,3 @@
-
 from enum import Enum, EnumMeta
 
 
@@ -27,31 +26,49 @@ class CustomEnum(str, Enum, metaclass=CustomEnumMeta):
         return "%s.%s" % (
             self.__class__.__name__, self._name_)
 
+
 class COUPON_TYPE(CustomEnum):
-    REGULAR='附息'
-    ZERO='贴现'  # 贴现债券剩余期限不能超过1年
-    DUE='到期一次还本付息'  # TODO 现在算的到期还本付息债券不能超过1年
+    REGULAR = '附息'
+    ZERO = '贴现'  # 贴现债券剩余期限不能超过1年
+    DUE = '到期一次还本付息'  # TODO 现在算的到期还本付息债券不能超过1年
+
 
 class ACCOUNT_TYPE(CustomEnum):
-    OCI='OCI'
-    TPL='TPL'
-    AC='AC'
-class CASHFLOW_TYPE(CustomEnum):
-    Undelivered='Undelivered'
-    Undelivered_Lastone='Undelivered_Lastone'
-    History='History'
-    All='All'
-class CASHFLOW_VIEW_TYPE(CustomEnum):
-    Raw='Raw'
-    Agg='Agg'
-class POSITION_GAIN_VIEW_TYPE(CustomEnum):
-    Raw='Raw'
-    Agg='Agg'
-class DURARION_TYPE(CustomEnum):
-    Macaulay='Macaulay'
-    Modified='Modified'
+    OCI = 'OCI'
+    TPL = 'TPL'
+    AC = 'AC'
 
-class RFC_PARAM:
+
+class CASHFLOW_TYPE(CustomEnum):
+    Undelivered = 'Undelivered'
+    Undelivered_Lastone = 'Undelivered_Lastone'
+    History = 'History'
+    All = 'All'
+
+
+class CASHFLOW_VIEW_TYPE(CustomEnum):
+    Raw = 'Raw'
+    Agg = 'Agg'
+
+
+class POSITION_GAIN_VIEW_TYPE(CustomEnum):
+    Raw = 'Raw'
+    Agg = 'Agg'
+
+
+class DURARION_TYPE(CustomEnum):
+    Macaulay = 'Macaulay'
+    Modified = 'Modified'
+
+
+"""
+Parameters for Mark to Market estimated value
+训练模型的参数。模型目标是预测中债估值收益率涨跌。
+参数主要是Features和Labels
+"""
+
+
+class MTM_PARAM:
     ALL_FEATS = [
         # 原始features
         'date',

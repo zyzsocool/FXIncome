@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import os
 from fxincome.logger import logger
-from fxincome.const import RFC_PARAM
+from fxincome.const import MTM_PARAM
 
 """
 生成'taget'列的辅助函数，target即预测目标（label）
@@ -86,7 +86,6 @@ if __name__ == '__main__':
     SRC_NAME = 'fxincome_features.csv'
     DEST_NAME = 'fxincome_processed.csv'
 
-    combine_fx_yields(ROOT_PATH, SRC_NAME)
     df = pd.read_csv(os.path.join(ROOT_PATH, SRC_NAME), parse_dates=['date'])
-    df = feature_engineering(df, RFC_PARAM.ALL_FEATS, future_period=1, label_type='fwd')
+    df = feature_engineering(df, MTM_PARAM.ALL_FEATS, future_period=1, label_type='fwd')
     df.to_csv(os.path.join(ROOT_PATH, DEST_NAME), index=False, encoding='utf-8')
