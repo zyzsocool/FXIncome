@@ -143,7 +143,7 @@ def pred_future(models, df, future_period=1, label_type='fwd'):
 if __name__ == '__main__':
     ROOT_PATH = 'd:/ProjectRicequant/fxincome/'
 
-    sample_file = r'd:\ProjectRicequant\fxincome\fxincome_features_latest.csv'
+    sample_file = 'd:/ProjectRicequant/fxincome/mtm/fxincome_mtm_features_latest.csv'
     sample_df = pd.read_csv(sample_file, parse_dates=['date'])
     test_df = mtm_process_data.feature_engineering(sample_df,
                                                select_features=MTM_PARAM.ALL_FEATS,

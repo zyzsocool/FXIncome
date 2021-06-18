@@ -1,0 +1,84 @@
+xgb
+
+-------------
+0.617-1d_fwd-XGB-20210618-1034-v2016.pkl
+
+              learning_rate=0.019093442897088145, max_delta_step=0, max_depth=4,
+              min_child_weight=1, missing=nan, monotone_constraints='()',
+              n_estimators=124, n_jobs=8, num_parallel_tree=1,
+              objective='binary:logistic', random_state=0, reg_alpha=0,
+              reg_lambda=1, scale_pos_weight=1, subsample=0.8397154364525159,
+              tree_method='exact', use_label_encoder=False,
+              validate_parameters=1, verbosity=None)>
+
+2021-06-18 10:34:04,071 - INFO - Train score is: 0.6744457409568262
+2021-06-18 10:34:04,071 - INFO - Val score is: 0.6018518518518519
+2021-06-18 10:34:04,071 - INFO - Test score is: 0.616822429906542
+2021-06-18 10:34:04,071 - INFO - Feature importances
+2021-06-18 10:34:04,079 - INFO - spread_t10y, 0.24
+2021-06-18 10:34:04,079 - INFO - avg_chg_20, 0.15
+2021-06-18 10:34:04,079 - INFO - ttm, 0.14
+2021-06-18 10:34:04,079 - INFO - pct_chg, 0.13
+2021-06-18 10:34:04,079 - INFO - fr007_chg_5, 0.13
+2021-06-18 10:34:04,079 - INFO - close, 0.12
+2021-06-18 10:34:04,080 - INFO - usdcny_chg_5, 0.1
+
+--------------------
+0.626-1d_fwd-XGB-20210618-1433-v2016.pkl
+
+XGBClassifier(base_score=0.5, booster='gbtree', colsample_bylevel=1,
+              colsample_bynode=1, colsample_bytree=0.7162408817030328,
+              eval_metric='logloss', gamma=0.05317523636938787, gpu_id=-1,
+              importance_type='gain', interaction_constraints='',
+              learning_rate=0.07763363734303054, max_delta_step=0, max_depth=8,
+              min_child_weight=1, missing=nan, monotone_constraints='()',
+              n_estimators=128, n_jobs=8, num_parallel_tree=1,
+              objective='binary:logistic', random_state=0, reg_alpha=0,
+              reg_lambda=1, scale_pos_weight=1, subsample=0.6129745977857103,
+              tree_method='exact', use_label_encoder=False,
+              validate_parameters=1, verbosity=None)>
+
+2021-06-18 14:33:44,124 - INFO - Train score is: 0.8704784130688448
+2021-06-18 14:33:44,124 - INFO - Val score is: 0.6111111111111112
+2021-06-18 14:33:44,124 - INFO - Test score is: 0.6261682242990654
+2021-06-18 14:33:44,124 - INFO - Feature importances
+2021-06-18 14:33:44,149 - INFO - avg_chg_20, 0.13
+2021-06-18 14:33:44,149 - INFO - avg_chg_5, 0.12
+2021-06-18 14:33:44,150 - INFO - spread_t1y, 0.12
+2021-06-18 14:33:44,150 - INFO - close, 0.12
+2021-06-18 14:33:44,150 - INFO - pct_chg, 0.11
+2021-06-18 14:33:44,150 - INFO - usdcny_chg_5, 0.11
+2021-06-18 14:33:44,150 - INFO - fr007_chg_5, 0.1
+2021-06-18 14:33:44,150 - INFO - spread_usdcny, 0.1
+2021-06-18 14:33:44,150 - INFO - spread_fr007, 0.1
+
+-------------------
+0.626-1d_fwd-XGB-20210618-1454-v2016.pkl
+
+XGBClassifier(base_score=0.5, booster='gbtree', colsample_bylevel=1,
+              colsample_bynode=1, colsample_bytree=0.898899422294103,
+              eval_metric='logloss', gamma=0.10426527848674311, gpu_id=-1,
+              importance_type='gain', interaction_constraints='',
+              learning_rate=0.02992620005764217, max_delta_step=0, max_depth=8,
+              min_child_weight=1, missing=nan, monotone_constraints='()',
+              n_estimators=131, n_jobs=8, num_parallel_tree=1,
+              objective='binary:logistic', random_state=0, reg_alpha=0,
+              reg_lambda=1, scale_pos_weight=1, subsample=0.8583420337351357,
+              tree_method='exact', use_label_encoder=False,
+              validate_parameters=1, verbosity=None)>
+
+2021-06-18 14:54:37,844 - INFO - Train score is: 0.8646441073512252
+2021-06-18 14:54:37,844 - INFO - Val score is: 0.6111111111111112
+2021-06-18 14:54:37,844 - INFO - Test score is: 0.6261682242990654
+2021-06-18 14:54:37,844 - INFO - Feature importances
+2021-06-18 14:54:37,867 - INFO - spread_usdcny, 0.13
+2021-06-18 14:54:37,867 - INFO - spread_t1y, 0.12
+2021-06-18 14:54:37,867 - INFO - close, 0.12
+2021-06-18 14:54:37,867 - INFO - spread_fr007, 0.12
+2021-06-18 14:54:37,867 - INFO - fr007_chg_5, 0.11
+2021-06-18 14:54:37,867 - INFO - avg_chg_5, 0.11
+2021-06-18 14:54:37,867 - INFO - pct_chg, 0.11
+2021-06-18 14:54:37,867 - INFO - avg_chg_10, 0.1
+2021-06-18 14:54:37,867 - INFO - usdcny_chg_5, 0.1
+
+----------------------

@@ -196,14 +196,14 @@ def rfc_train(train_X, train_y, val_X, val_y, test_X, test_y):
         'max_samples': stats.uniform(0.3, 0.7),
         'min_samples_leaf': stats.loguniform(1e-3, 1e-1),
         'max_leaf_nodes': stats.randint(20, 100),
-        'max_depth': stats.randint(3, 12)
+        'max_depth': stats.randint(3, 9)
     }
     random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=50,
                                        n_jobs=-1, pre_dispatch=64)
 
     epoch = test_score = train_score = val_score = obb_score = 0
     epoch_limit = 1000
-    while epoch < epoch_limit and (test_score < 0.61 or train_score < 0.63 or val_score < 0.61 or obb_score < 0.53):
+    while epoch < epoch_limit and (test_score < 0.60 or train_score < 0.62 or val_score < 0.60 or obb_score < 0.53):
         logger.info(f"Epoch {epoch}")
         random_search.fit(combined_train_X, combined_train_y)
         best_rfc = random_search.best_estimator_
@@ -235,12 +235,12 @@ def xgb_train(train_X, train_y, val_X, val_y, test_X, test_y):
         'subsample': stats.uniform(0.6, 0.4),
         'max_depth': stats.randint(3, 9),  # default 6
     }
-    xgb_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=60,
+    xgb_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=50,
                                     return_train_score=True, n_jobs=-1, pre_dispatch=64)
 
     epoch = test_score = train_score = val_score = obb_score = 0
     epoch_limit = 1000
-    while epoch < epoch_limit and (test_score < 0.61 or train_score < 0.63 or val_score < 0.60):
+    while epoch < epoch_limit and (test_score < 0.61 or train_score < 0.62 or val_score < 0.61):
         logger.info(f"Epoch {epoch}")
         xgb_search.fit(train_X, train_y, eval_set=[(val_X, val_y)], early_stopping_rounds=7, verbose=False)
         best_xgb = xgb_search.best_estimator_
@@ -348,7 +348,7 @@ def report_model(model, test_X, test_y, train_X, train_y, val_X, val_y, rfc=Fals
     logger.info(f"Test score is: {model_score}")
     if feat_importance:
         logger.info("Feature importances")
-        for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_)):
+        for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_), key=lambda x: x[1], reverse=True):
             logger.info(f"{f_name}, {round(float(score), 2)}")
     return round(model_score, 3), train_score, val_score, obb_score
 
@@ -360,15 +360,15 @@ if __name__ == '__main__':
     PERIOD = '1d_fwd'
 
     sample_df = pd.read_csv(sample_file, parse_dates=['date'])
-    sample_df = sample_df[sample_df['date'] > datetime.datetime(2016, 1, 1)]
+    # sample_df = sample_df[sample_df['date'] > datetime.datetime(2018, 1, 1)]
     train_X, train_y, val_X, val_y, test_X, test_y = generate_dataset(sample_df, root_path=ROOT_PATH,
                                                                       val_ratio=0.1, test_ratio=0.1)
 
     # model, name = rfc_train(train_X, train_y, val_X, val_y, test_X, test_y)
     # joblib.dump(model, f"models/{name}.pkl")
-    model, name = xgb_train(train_X, train_y, val_X, val_y, test_X, test_y)
-    joblib.dump(model, f"models/{name}.pkl")
+    # model, name = xgb_train(train_X, train_y, val_X, val_y, test_X, test_y)
+    # joblib.dump(model, f"models/{name}.pkl")
     # model, name = svm_train(train_X, train_y, val_X, val_y, test_X, test_y)
     # joblib.dump(model, f"models/{name}.pkl")
-    # model, name = svm_poly_train(train_X, train_y, val_X, val_y, test_X, test_y)
-    # joblib.dump(model, f"models/{name}.pkl")
+    model, name = svm_poly_train(train_X, train_y, val_X, val_y, test_X, test_y)
+    joblib.dump(model, f"models/{name}.pkl")

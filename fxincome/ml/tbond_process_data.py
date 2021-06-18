@@ -51,11 +51,14 @@ def feature_engineering(df, select_features, future_period, label_type='fwd', dr
     # 收盘收益ytm变种
     df['pct_chg'] = df.close.pct_change()
     df['avg_chg_5'] = (df.close - df.close.rolling(5).mean()) / df.close.rolling(5).mean()
+    df['avg_chg_10'] = (df.close - df.close.rolling(10).mean()) / df.close.rolling(10).mean()
     df['avg_chg_20'] = (df.close - df.close.rolling(20).mean()) / df.close.rolling(20).mean()
     df['volaty'] = (df.low - df.high) / df.close
     # 流动性指标变种
     df['fr007_chg_5'] = (df.fr007 - df.fr007.rolling(5).mean()) / df.fr007.rolling(5).mean()
     df['fr007_1y_chg_5'] = (df.fr007_1y - df.fr007_1y.rolling(5).mean()) / df.fr007_1y.rolling(5).mean()
+    # 其他指标变种
+    df['t10y_chg_5'] = (df.t10y - df.t10y.rolling(5).mean()) / df.t10y.rolling(5).mean()
     # 收盘ytm与其他各种指标之间的差值
     df['spread_t1y'] = df.close - df.t1y
     df['spread_t10y'] = df.close - df.t10y

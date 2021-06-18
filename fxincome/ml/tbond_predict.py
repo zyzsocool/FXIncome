@@ -6,7 +6,7 @@ import joblib
 import matplotlib.pyplot as plt
 import sklearn as sk
 import xgboost
-from fxincome.const import MTM_PARAM
+from fxincome.const import TBOND_PARAM
 from fxincome.ml import tbond_process_data, tbond_model
 from fxincome.logger import logger
 from sklearn.metrics import classification_report
@@ -27,7 +27,7 @@ def show_tree(model):
     if isinstance(model, RandomForestClassifier):
         tree = model.estimators_[0].tree_
         logger.info(f"Tree depth: {tree.max_depth}")
-        sk.tree.plot_tree(tree, feature_names=MTM_PARAM.TRAIN_FEATS, filled=True)
+        sk.tree.plot_tree(tree, feature_names=TBOND_PARAM.TRAIN_FEATS, filled=True)
 
     elif isinstance(model, xgboost.XGBClassifier):
         logger.info(f"Tree depth: {model.max_depth}")
@@ -50,8 +50,8 @@ def show_tree(model):
 
 
 def val_models(models, df):
-    X = df[MTM_PARAM.TRAIN_FEATS]
-    y = df[MTM_PARAM.LABELS].squeeze().to_numpy()
+    X = df[TBOND_PARAM.TRAIN_FEATS]
+    y = df[TBOND_PARAM.LABELS].squeeze().to_numpy()
     df = df[['date']]
     names = []
     col_names = ['date']
@@ -67,7 +67,7 @@ def val_models(models, df):
         logger.info(f"Test score is: {model_score}")
         if name in ['XGBClassifier', 'RandomForestClassifier']:
             logger.info("Feature importances")
-            for f_name, score in sorted(zip(MTM_PARAM.TRAIN_FEATS, model.feature_importances_)):
+            for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_), key=lambda x: x[1], reverse=True):
                 logger.info(f"{f_name}, {round(float(score), 2)}")
         probs = model.predict_proba(X)
         df.insert(len(df.columns), column=f'{name}_pred', value=test_pred)
@@ -103,12 +103,12 @@ def val_models(models, df):
 
 def pred_future(models, df, future_period=1, label_type='fwd'):
     df = tbond_process_data.feature_engineering(df,
-                                          select_features=MTM_PARAM.ALL_FEATS,
+                                          select_features=TBOND_PARAM.ALL_FEATS,
                                           future_period=future_period,
                                           label_type=label_type,
                                           dropna=False)
     today = df.date.iloc[-1].date()
-    last_x = df[MTM_PARAM.TRAIN_FEATS].tail(1)
+    last_x = df[TBOND_PARAM.TRAIN_FEATS].tail(1)
     preds = []
     probas = []
     for model in models:
@@ -119,16 +119,16 @@ def pred_future(models, df, future_period=1, label_type='fwd'):
         proba = model.predict_proba(last_x)
         if pred[0] == 0:
             if label_type == 'fwd':
-                logger.info(f"{name} - {today} - 10年国债收益率在{future_period}个交易日后将下跌")
+                logger.info(f"{name} - {today} - 16国债19 ytm在{future_period}个交易日后将下跌")
             elif label_type == 'avg':
-                logger.info(f"{name} - {today} - 10年国债收益率在未来{future_period}个交易日的均值对比今天将下跌")
+                logger.info(f"{name} - {today} - 16国债19 ytm在未来{future_period}个交易日的均值对比今天将下跌")
             else:
                 raise NotImplementedError("Unknown label_type")
         elif pred[0] == 1:
             if label_type == 'fwd':
-                logger.info(f"{name} - {today} - 10年国债收益率在{future_period}个交易日后将上涨")
+                logger.info(f"{name} - {today} - 16国债19 ytm在{future_period}个交易日后将上涨")
             elif label_type == 'avg':
-                logger.info(f"{name} - {today} - 10年国债收益率在未来{future_period}个交易日的均值对比今天将上涨")
+                logger.info(f"{name} - {today} - 16国债19 ytm在未来{future_period}个交易日的均值对比今天将上涨")
             else:
                 raise NotImplementedError("Unknown label_type")
         else:
@@ -146,20 +146,20 @@ if __name__ == '__main__':
     sample_file = r'd:\ProjectRicequant\fxincome\fxincome_features_latest.csv'
     sample_df = pd.read_csv(sample_file, parse_dates=['date'])
     test_df = tbond_process_data.feature_engineering(sample_df,
-                                               select_features=MTM_PARAM.ALL_FEATS,
+                                               select_features=TBOND_PARAM.ALL_FEATS,
                                                future_period=1,
                                                label_type='fwd')
     test_df.to_csv(os.path.join(ROOT_PATH, 'test_df.csv'), index=False, encoding='utf-8')
     train_X, train_y, val_X, val_y, test_X, test_y = tbond_model.generate_dataset(test_df, root_path=ROOT_PATH,
                                                                                 val_ratio=0.1, test_ratio=0.1)
-    svm_model = joblib.load(f"models/0.59-1d_fwd-SVM-20210614-1153-v2018.pkl")
-    rfc_model = joblib.load(f"models/0.615-1d_fwd-RFC-20210610-1744-v2018.pkl")
-    xgb_model = joblib.load(f"models/0.656-1d_fwd-XGB-20210611-2231-v2016.pkl")
-    pol_model = joblib.load(f"models/0.586-1d_fwd-POLY-20210616-0949-v2016.pkl")
+    # svm_model = joblib.load(f"models/0.59-1d_fwd-SVM-20210614-1153-v2018.pkl")
+    # rfc_model = joblib.load(f"models/0.615-1d_fwd-RFC-20210610-1744-v2018.pkl")
+    xgb_model = joblib.load(f"models/0.617-1d_fwd-POLY-20210618-1702.pkl")
+    # pol_model = joblib.load(f"models/0.586-1d_fwd-POLY-20210616-0949-v2016.pkl")
 
-    vote_model = EnsembleVoteClassifier(clfs=[xgb_model, rfc_model, svm_model],
-                                   weights=[1, 1, 1], voting='hard', fit_base_estimators=False)
-    vote_model.fit(val_X, val_y)
-    history_result = val_models([vote_model, xgb_model, rfc_model, svm_model], test_df)
-    pred_future([vote_model, xgb_model, rfc_model, pol_model], sample_df, future_period=1, label_type='fwd')
+    # vote_model = EnsembleVoteClassifier(clfs=[xgb_model, rfc_model, svm_model],
+    #                                weights=[1, 1, 1], voting='hard', fit_base_estimators=False)
+    # vote_model.fit(val_X, val_y)
+    history_result = val_models([xgb_model], test_df)
+    pred_future([xgb_model], sample_df, future_period=1, label_type='fwd')
     history_result.to_csv(os.path.join(ROOT_PATH, 'history_result.csv'), index=False, encoding='utf-8')
