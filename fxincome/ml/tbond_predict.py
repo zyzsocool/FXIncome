@@ -13,15 +13,14 @@ from sklearn.metrics import classification_report
 from sklearn.ensemble import RandomForestClassifier
 from mlxtend.classifier import EnsembleVoteClassifier
 
-"""
-展示决策树模型中的任意一颗树，如果是XGBClassifier，还将pot_importance
-    Args:
-        model: 决策树模型，可以为RandomForestClassifier 或 XGBClassifier 
-    Returns:
-        none
-"""
-
 def show_tree(model):
+    """
+    展示决策树模型中的任意一颗树，如果是XGBClassifier，还将pot_importance
+        Args:
+            model: 决策树模型，可以为RandomForestClassifier 或 XGBClassifier
+        Returns:
+            none
+    """
     plt.rcParams.update({'figure.figsize': (20, 16)})
     plt.rcParams.update({'font.size': 12})
     if isinstance(model, RandomForestClassifier):
@@ -37,19 +36,20 @@ def show_tree(model):
         raise NotImplementedError("Unknown Tree Model!")
     plt.show()
 
-"""
-用最新的数据检验模型。输入可为多个模型。对于每个模型，依次显示模型的name， params, test_report, score, feature_importances（如有）
-只有树状模型才显示feature_importance，目前只支持'XGBClassifier'和'RandomForestClassifier' 
-    Args:
-        models(List): A list of models. 每个model必须具有以下methods: 
-            predict(X), score(X,y), predict_proba(X)
-        df(DataFrame): 检验数据，含日期，含labels，需要做好预处理
-    Returns:
-        history_result(DataFrame): 'date', 'actual', [每个model预测的'result', 'pred', 'actual', 'down_proba', 'up_proba']
-"""
+
 
 
 def val_models(models, df):
+    """
+    用最新的数据检验模型。输入可为多个模型。对于每个模型，依次显示模型的name， params, test_report, score, feature_importances（如有）
+    只有树状模型才显示feature_importance，目前只支持'XGBClassifier'和'RandomForestClassifier'
+        Args:
+            models(List): A list of models. 每个model必须具有以下methods:
+                predict(X), score(X,y), predict_proba(X)
+            df(DataFrame): 检验数据，含日期，含labels，需要做好预处理
+        Returns:
+            history_result(DataFrame): 'date', 'actual', [每个model预测的'result', 'pred', 'actual', 'down_proba', 'up_proba']
+    """
     X = df[TBOND_PARAM.TRAIN_FEATS]
     y = df[TBOND_PARAM.LABELS].squeeze().to_numpy()
     df = df[['date']]
@@ -68,7 +68,7 @@ def val_models(models, df):
         if name in ['XGBClassifier', 'RandomForestClassifier']:
             logger.info("Feature importances")
             for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_), key=lambda x: x[1], reverse=True):
-                logger.info(f"{f_name}, {round(float(score), 2)}")
+                logger.info(f"{f_name}, {float(score):.2f}")
         probs = model.predict_proba(X)
         df.insert(len(df.columns), column=f'{name}_pred', value=test_pred)
         df.insert(len(df.columns), column=f'{name}_actual', value=y)
@@ -86,22 +86,21 @@ def val_models(models, df):
     history_result.loc['average'] = history_result.mean(numeric_only=True)
     return history_result
 
-"""
-用最新的数据检验模型，
-    Args:
-        df(DataFrame): 检验数据，必须含labels，无需做预处理
-        models(List): A list of models. 每个model必须具有以下methods: predict(X), predict_proba(X)
-        future_period(int): label的观察期，用于对比当日的收盘价，生成涨跌label。
-        label_type(str): 预测规则，只限于'fwd'或'avg'，默认为'fwd'
-            'fwd': 预测未来第n天对比当日收盘价的涨跌
-            'avg': 预测未来n天平均值对比当日收盘价的涨跌
-    Returns:
-        preds(List): 2D array-like of shape(n_models, n_dates), model顺序与输入的顺序一样；0为下跌，1为上涨
-        probas(List): 3D array-like of shape(n_models, n_dates, 2), model顺序与输入的顺序一样；最后一项为[下跌概率， 上涨概率]
-"""
-
 
 def pred_future(models, df, future_period=1, label_type='fwd'):
+    """
+    用最新的数据检验模型，
+        Args:
+            df(DataFrame): 检验数据，必须含labels，无需做预处理
+            models(List): A list of models. 每个model必须具有以下methods: predict(X), predict_proba(X)
+            future_period(int): label的观察期，用于对比当日的收盘价，生成涨跌label。
+            label_type(str): 预测规则，只限于'fwd'或'avg'，默认为'fwd'
+                'fwd': 预测未来第n天对比当日收盘价的涨跌
+                'avg': 预测未来n天平均值对比当日收盘价的涨跌
+        Returns:
+            preds(List): 2D array-like of shape(n_models, n_dates), model顺序与输入的顺序一样；0为下跌，1为上涨
+            probas(List): 3D array-like of shape(n_models, n_dates, 2), model顺序与输入的顺序一样；最后一项为[下跌概率， 上涨概率]
+    """
     df = tbond_process_data.feature_engineering(df,
                                           select_features=TBOND_PARAM.ALL_FEATS,
                                           future_period=future_period,
@@ -134,7 +133,7 @@ def pred_future(models, df, future_period=1, label_type='fwd'):
         else:
             logger.info(f"Unknown result: {name} - {pred[0]}")
 
-        logger.info(f"预测下跌概率：{round(float(proba[0][0]), 2)}，预测上涨概率：{round(float(proba[0][1]), 2)}")
+        logger.info(f"预测下跌概率：{float(proba[0][0]):.2f}，预测上涨概率：{float(proba[0][1]):.2f}")
         preds.append(pred)
         probas.append(proba)
     return preds, probas
@@ -152,14 +151,16 @@ if __name__ == '__main__':
     test_df.to_csv(os.path.join(ROOT_PATH, 'test_df.csv'), index=False, encoding='utf-8')
     train_X, train_y, val_X, val_y, test_X, test_y = tbond_model.generate_dataset(test_df, root_path=ROOT_PATH,
                                                                                 val_ratio=0.1, test_ratio=0.1)
-    # svm_model = joblib.load(f"models/0.59-1d_fwd-SVM-20210614-1153-v2018.pkl")
-    # rfc_model = joblib.load(f"models/0.615-1d_fwd-RFC-20210610-1744-v2018.pkl")
-    xgb_model = joblib.load(f"models/0.617-1d_fwd-POLY-20210618-1702.pkl")
-    # pol_model = joblib.load(f"models/0.586-1d_fwd-POLY-20210616-0949-v2016.pkl")
+    svm_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1433-v2016.pkl")
+    rfc_model = joblib.load(f"models/0.605-1d_fwd-RFC-20210619-1346-v2018.pkl")
+    xgb_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1454-v2016.pkl")
+    pol_model = joblib.load(f"models/0.605-1d_fwd-SVM-20210620-2334.pkl")
 
-    # vote_model = EnsembleVoteClassifier(clfs=[xgb_model, rfc_model, svm_model],
-    #                                weights=[1, 1, 1], voting='hard', fit_base_estimators=False)
-    # vote_model.fit(val_X, val_y)
-    history_result = val_models([xgb_model], test_df)
-    pred_future([xgb_model], sample_df, future_period=1, label_type='fwd')
+    vote_model = EnsembleVoteClassifier(clfs=[xgb_model, rfc_model, svm_model],
+                                   weights=[1, 1, 1], voting='hard', fit_base_estimators=False)
+    vote_model.fit(val_X, val_y)
+    # history_result = val_models([vote_model, xgb_model, rfc_model, svm_model], test_df)
+    # pred_future([vote_model, xgb_model, rfc_model, svm_model], sample_df, future_period=1, label_type='fwd')
+    history_result = val_models([pol_model], test_df)
+    pred_future([pol_model], sample_df, future_period=1, label_type='fwd')
     history_result.to_csv(os.path.join(ROOT_PATH, 'history_result.csv'), index=False, encoding='utf-8')

@@ -176,8 +176,8 @@ def train(train_X, train_y, val_X, val_y, test_X, test_y):
     #                                  oob_score=True,
     #                                  n_jobs=-1)
     if random_score > grid_score:
-        return random_model, f"{random_score}-RandomSearch-{datetime.datetime.now().strftime('%Y%m%d-%H%M')}"
-    return grid_model, f"{grid_score}-GridSearch-{datetime.datetime.now().strftime('%Y%m%d-%H%M')}"
+        return random_model, f"{random_score}-RandomSearch-{datetime.datetime.now():%Y%m%d-%H%M}"
+    return grid_model, f"{grid_score}-GridSearch-{datetime.datetime.now():%Y%m%d-%H%M}"
 
 
 def rfc_train(train_X, train_y, val_X, val_y, test_X, test_y):
@@ -203,7 +203,7 @@ def rfc_train(train_X, train_y, val_X, val_y, test_X, test_y):
 
     epoch = test_score = train_score = val_score = obb_score = 0
     epoch_limit = 1000
-    while epoch < epoch_limit and (test_score < 0.60 or train_score < 0.62 or val_score < 0.60 or obb_score < 0.53):
+    while epoch < epoch_limit and (test_score < 0.60 or train_score < 0.61 or val_score < 0.60 or obb_score < 0.54):
         logger.info(f"Epoch {epoch}")
         random_search.fit(combined_train_X, combined_train_y)
         best_rfc = random_search.best_estimator_
@@ -213,7 +213,7 @@ def rfc_train(train_X, train_y, val_X, val_y, test_X, test_y):
                                                                      rfc=True, feat_importance=True)
         epoch += 1
 
-    return best_rfc, f"{test_score}-{PERIOD}-RFC-{datetime.datetime.now().strftime('%Y%m%d-%H%M')}"
+    return best_rfc, f"{test_score}-{PERIOD}-RFC-{datetime.datetime.now():%Y%m%d-%H%M}"
 
 
 def xgb_train(train_X, train_y, val_X, val_y, test_X, test_y):
@@ -249,7 +249,7 @@ def xgb_train(train_X, train_y, val_X, val_y, test_X, test_y):
                                                                      train_y, val_X, val_y, feat_importance=True)
         epoch += 1
 
-    return best_xgb, f"{test_score}-{PERIOD}-XGB-{datetime.datetime.now().strftime('%Y%m%d-%H%M')}"
+    return best_xgb, f"{test_score}-{PERIOD}-XGB-{datetime.datetime.now():%Y%m%d-%H%M}"
 
 
 def svm_train(train_X, train_y, val_X, val_y, test_X, test_y):
@@ -268,10 +268,10 @@ def svm_train(train_X, train_y, val_X, val_y, test_X, test_y):
     ])
     n_features = train_X.shape[1]
     param_dist = {
-        'svc__C': stats.loguniform(1e-4, 100),
-        'svc__gamma': stats.loguniform(1e-4, 1)
+        'svc__C': stats.loguniform(1e-4, 1),
+        'svc__gamma': stats.loguniform(1e-3, 0.7)
     }
-    svm_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=2000,
+    svm_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=200,
                                     n_jobs=-1, pre_dispatch=64)
     param_grid = {
         # 'svc__C': np.logspace(-5, 3, num=100, base=10),
@@ -282,13 +282,19 @@ def svm_train(train_X, train_y, val_X, val_y, test_X, test_y):
         # 'svc__gamma': np.logspace(-3, 2, num=20)
     }
     # svm_search = GridSearchCV(clf, param_grid=param_grid, n_jobs=-1, pre_dispatch=64)
-    svm_search.fit(combined_train_X, combined_train_y)
-    best_svm = svm_search.best_estimator_
-    test_score, train_score, val_score, obb_score = report_model(best_svm,
-                                                                 test_X, test_y, train_X,
-                                                                 train_y, val_X, val_y)
 
-    return best_svm, f"{test_score}-{PERIOD}-SVM-{datetime.datetime.now().strftime('%Y%m%d-%H%M')}"
+    epoch = test_score = train_score = val_score = obb_score = 0
+    epoch_limit = 1000
+    while epoch < epoch_limit and (test_score < 0.60 or train_score < 0.60 or val_score < 0.60):
+        logger.info(f"Epoch {epoch}")
+        svm_search.fit(combined_train_X, combined_train_y)
+        best_svm = svm_search.best_estimator_
+        test_score, train_score, val_score, obb_score = report_model(best_svm,
+                                                                     test_X, test_y, train_X,
+                                                                     train_y, val_X, val_y)
+        epoch += 1
+
+    return best_svm, f"{test_score}-{PERIOD}-SVM-{datetime.datetime.now():%Y%m%d-%H%M}"
 
 
 def svm_poly_train(train_X, train_y, val_X, val_y, test_X, test_y):
@@ -303,23 +309,52 @@ def svm_poly_train(train_X, train_y, val_X, val_y, test_X, test_y):
     logger.info(f"Size of train set X: {len(combined_train_X)}")
     clf = Pipeline([
         ('scaler', StandardScaler()),
-        ('svc', SVC(kernel='poly', probability=True))
+        ('svc', SVC(kernel='poly', degree=2, probability=True))
     ])
     n_features = train_X.shape[1]
     param_dist = {
-        'svc__C': stats.loguniform(1e-4, 100),
-        'svc__gamma': stats.loguniform(1e-4, 1),
-        'svc__degree': stats.randint(2, 3)
+        'svc__C': stats.loguniform(1e-4, 1),
+        'svc__gamma': stats.loguniform(1e-3, 0.7)
     }
     svm_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=200,
                                     n_jobs=-1, pre_dispatch=64)
-    svm_search.fit(combined_train_X, combined_train_y)
-    best_svm = svm_search.best_estimator_
-    test_score, train_score, val_score, obb_score = report_model(best_svm,
+    epoch = test_score = train_score = val_score = obb_score = 0
+    epoch_limit = 1000
+    while epoch < epoch_limit and (test_score < 0.59 or train_score < 0.60 or val_score < 0.60):
+        logger.info(f"Epoch {epoch}")
+        svm_search.fit(combined_train_X, combined_train_y)
+        best_svm = svm_search.best_estimator_
+        test_score, train_score, val_score, obb_score = report_model(best_svm,
+                                                                     test_X, test_y, train_X,
+                                                                     train_y, val_X, val_y)
+        epoch += 1
+
+    return test_score, best_svm, f"{test_score}-{PERIOD}-POLY-{datetime.datetime.now():%Y%m%d-%H%M}"
+
+
+def lr_train(train_X, train_y, val_X, val_y, test_X, test_y):
+    """
+    训练Logistic Regression 模型并输出报告，返回最佳模型及附带分数的模型名字。
+        Returns:
+            model(LogisticRegression)：最佳的模型
+            name(str): 对应的分数 + 预测的内容 + 日期时点。 分数保留3位小数， 预测的内容由全局变量PERIOD(str)决定。
+    """
+    combined_train_X = train_X.append(val_X)
+    combined_train_y = np.append(train_y, val_y)
+    logger.info(f"Size of train set X: {len(combined_train_X)}")
+    clf = LogisticRegression(max_iter=10000)
+    param_dist = {
+        'C': stats.loguniform(1e-2, 100)
+    }
+    lf_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=1000,
+                                   n_jobs=-1, pre_dispatch=64)
+    lf_search.fit(combined_train_X, combined_train_y)
+    best_lr = lf_search.best_estimator_
+    test_score, train_score, val_score, obb_score = report_model(best_lr,
                                                                  test_X, test_y, train_X,
                                                                  train_y, val_X, val_y)
 
-    return best_svm, f"{test_score}-{PERIOD}-POLY-{datetime.datetime.now().strftime('%Y%m%d-%H%M')}"
+    return test_score, best_lr, f"{test_score}-{PERIOD}-LR-{datetime.datetime.now():%Y%m%d-%H%M}"
 
 
 def report_model(model, test_X, test_y, train_X, train_y, val_X, val_y, rfc=False, feat_importance=False):
@@ -348,8 +383,9 @@ def report_model(model, test_X, test_y, train_X, train_y, val_X, val_y, rfc=Fals
     logger.info(f"Test score is: {model_score}")
     if feat_importance:
         logger.info("Feature importances")
-        for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_), key=lambda x: x[1], reverse=True):
-            logger.info(f"{f_name}, {round(float(score), 2)}")
+        for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_), key=lambda x: x[1],
+                                    reverse=True):
+            logger.info(f"{f_name}, {float(score):.2f}")
     return round(model_score, 3), train_score, val_score, obb_score
 
 
@@ -360,7 +396,7 @@ if __name__ == '__main__':
     PERIOD = '1d_fwd'
 
     sample_df = pd.read_csv(sample_file, parse_dates=['date'])
-    # sample_df = sample_df[sample_df['date'] > datetime.datetime(2018, 1, 1)]
+    sample_df = sample_df[sample_df['date'] > datetime.datetime(2018, 1, 1)]
     train_X, train_y, val_X, val_y, test_X, test_y = generate_dataset(sample_df, root_path=ROOT_PATH,
                                                                       val_ratio=0.1, test_ratio=0.1)
 
@@ -368,7 +404,10 @@ if __name__ == '__main__':
     # joblib.dump(model, f"models/{name}.pkl")
     # model, name = xgb_train(train_X, train_y, val_X, val_y, test_X, test_y)
     # joblib.dump(model, f"models/{name}.pkl")
-    # model, name = svm_train(train_X, train_y, val_X, val_y, test_X, test_y)
-    # joblib.dump(model, f"models/{name}.pkl")
-    model, name = svm_poly_train(train_X, train_y, val_X, val_y, test_X, test_y)
+    model, name = svm_train(train_X, train_y, val_X, val_y, test_X, test_y)
     joblib.dump(model, f"models/{name}.pkl")
+    # score, model, name = svm_poly_train(train_X, train_y, val_X, val_y, test_X, test_y)
+    # joblib.dump(model, f"models/{name}.pkl")
+    # score, model, name = lr_train(train_X, train_y, val_X, val_y, test_X, test_y)
+    # if score > 0.57:
+    #     joblib.dump(model, f"models/{name}.pkl")

@@ -106,6 +106,35 @@ class TBOND_PARAM:
         'target'
     ]
 
+    backup_TRAIN_FEATS = [
+        # 原始features
+        'close',
+        # 'amount',
+        # 'ttm',
+        # 'fr007',
+        # 'fr007_5y',
+        # 收盘ytm变种
+        'pct_chg',
+        'avg_chg_5',
+        'avg_chg_10',
+        # 'avg_chg_20',
+        # 'volaty',
+        # 流动性指标变种
+        'fr007_chg_5',
+        # 其他指标变种
+        # 't10y_chg_5',
+        # 收盘ytm与其他各种指标之间的差值
+        'spread_t1y',
+        # 'spread_t10y',
+        'spread_fr007',
+        # 'spread_fr007_5y',
+        'spread_usdcny',
+        # 其他各种指标之间的差值
+        # 'spread_fr007_5y_fr007_1y',
+        # 汇率变种
+        'usdcny_chg_5'
+    ]
+
     TRAIN_FEATS = [
         # 原始features
         'close',
@@ -134,6 +163,7 @@ class TBOND_PARAM:
         # 汇率变种
         'usdcny_chg_5'
     ]
+
     LABELS = ['target']
 
 
