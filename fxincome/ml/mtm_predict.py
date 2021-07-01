@@ -8,7 +8,7 @@ import sklearn as sk
 import xgboost
 from fxincome.const import MTM_PARAM
 from fxincome.ml import mtm_process_data, mtm_model
-from fxincome.logger import logger
+from fxincome import logger
 from sklearn.metrics import classification_report
 from sklearn.ensemble import RandomForestClassifier
 from mlxtend.classifier import EnsembleVoteClassifier

@@ -14,7 +14,7 @@ import xgboost as xgb
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from fxincome.const import TBOND_PARAM
-from fxincome.logger import logger
+from fxincome import logger
 
 
 def split_stratified_into_train_val_test(df_input, stratify_colname='y',

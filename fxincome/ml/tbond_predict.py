@@ -8,7 +8,7 @@ import sklearn as sk
 import xgboost
 from fxincome.const import TBOND_PARAM
 from fxincome.ml import tbond_process_data, tbond_model
-from fxincome.logger import logger
+from fxincome import logger
 from sklearn.metrics import classification_report
 from sklearn.ensemble import RandomForestClassifier
 from mlxtend.classifier import EnsembleVoteClassifier
@@ -151,16 +151,16 @@ if __name__ == '__main__':
     test_df.to_csv(os.path.join(ROOT_PATH, 'test_df.csv'), index=False, encoding='utf-8')
     train_X, train_y, val_X, val_y, test_X, test_y = tbond_model.generate_dataset(test_df, root_path=ROOT_PATH,
                                                                                 val_ratio=0.1, test_ratio=0.1)
-    svm_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1433-v2016.pkl")
+    # svm_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1433-v2016.pkl")
     rfc_model = joblib.load(f"models/0.605-1d_fwd-RFC-20210619-1346-v2018.pkl")
     xgb_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1454-v2016.pkl")
-    pol_model = joblib.load(f"models/0.605-1d_fwd-SVM-20210620-2334.pkl")
+    # pol_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1454-v2016.pkl")
 
-    vote_model = EnsembleVoteClassifier(clfs=[xgb_model, rfc_model, svm_model],
-                                   weights=[1, 1, 1], voting='hard', fit_base_estimators=False)
+    vote_model = EnsembleVoteClassifier(clfs=[xgb_model, rfc_model],
+                                   weights=[1, 1], voting='soft', fit_base_estimators=False)
     vote_model.fit(val_X, val_y)
-    # history_result = val_models([vote_model, xgb_model, rfc_model, svm_model], test_df)
-    # pred_future([vote_model, xgb_model, rfc_model, svm_model], sample_df, future_period=1, label_type='fwd')
-    history_result = val_models([pol_model], test_df)
-    pred_future([pol_model], sample_df, future_period=1, label_type='fwd')
+    history_result = val_models([vote_model, xgb_model, rfc_model], test_df)
+    pred_future([vote_model, xgb_model, rfc_model], sample_df, future_period=1, label_type='fwd')
+    # history_result = val_models([pol_model], test_df)
+    # pred_future([pol_model], sample_df, future_period=1, label_type='fwd')
     history_result.to_csv(os.path.join(ROOT_PATH, 'history_result.csv'), index=False, encoding='utf-8')

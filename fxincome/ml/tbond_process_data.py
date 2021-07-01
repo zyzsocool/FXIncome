@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 import os
-from fxincome.logger import logger
+from fxincome import logger
 from fxincome.const import TBOND_PARAM
 
 
