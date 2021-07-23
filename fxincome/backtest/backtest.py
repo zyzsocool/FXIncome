@@ -1,6 +1,7 @@
 # -*- coding: utf-8; py-indent-offset:4 -*-
 
 from datetime import timedelta
+import math
 import backtrader as bt
 import pandas as pd
 
@@ -26,6 +27,7 @@ class TBondData(bt.feeds.PandasData):
 
 
 class PredictStrategy(bt.Strategy):
+    tb_name = '019547.SH'  # name of the tbond
 
     def log(self, txt, dt=None):
         ''' Logging function for this strategy'''
@@ -33,7 +35,6 @@ class PredictStrategy(bt.Strategy):
         print(f"{dt:%Y%m%d} - {txt}")
 
     def __init__(self):
-        self.tb_name = '019547.SH'  # name of the tbond
         # Keep references to the 'OHLC' and 'OHLC ytm' lines in the '019547.SH' dataseries
         self.open = self.getdatabyname(self.tb_name).open
         self.high = self.getdatabyname(self.tb_name).high
@@ -48,12 +49,12 @@ class PredictStrategy(bt.Strategy):
 
     def notify_order(self, order):
         if order.status in [order.Accepted]:
-            if order.isbuy():
-                self.log(f"Buy Order{order.ref} Accepted. Price:{order.created.price} size:{order.created.size}")
-            elif order.issell():
-                self.log(f"Sell Order{order.ref} Accepted. Price:{order.created.price} size:{order.created.size}")
-            else:
-                self.log("Unknown trade direction")
+            # if order.isbuy():
+            #     self.log(f"Buy Order{order.ref} Accepted. Price:{order.created.price} size:{order.created.size}")
+            # elif order.issell():
+            #     self.log(f"Sell Order{order.ref} Accepted. Price:{order.created.price} size:{order.created.size}")
+            # else:
+            #     self.log("Unknown trade direction")
             return
 
         # Check if an order has been completed
@@ -61,14 +62,14 @@ class PredictStrategy(bt.Strategy):
         if order.status in [order.Completed]:
             if order.isbuy():
                 self.log(f'ref{order.ref}, BUY EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}')
-                self.buyprice = order.executed.price
-                self.buycomm = order.executed.comm
-                self.opsize = order.executed.size
             elif order.issell():
                 self.log(f'ref{order.ref}, SELL EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}')
-                gross_pnl = (order.executed.price - self.buyprice) * self.opsize
-                net_pnl = gross_pnl - self.buycomm - order.executed.comm
-                self.log(f"Trade Profit, Gross:{gross_pnl}, Net:{net_pnl}")
+                avg_cost = self.getpositionbyname(self.tb_name).price_orig  # price_orig is the average price before this order
+                self.log(f'avg_cost:{avg_cost:.4f}')
+                self.log(f'price:{order.executed.price:.4f}')
+                gross_pnl = (order.executed.price - avg_cost) * abs(order.executed.size)  # size may be negative
+                net_pnl = gross_pnl - 2 * order.executed.comm
+                self.log(f"Trade Profit, Gross:{gross_pnl:.4f}, Net:{net_pnl:.4f}")
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log('Order Canceled/Margin/Rejected')
 
@@ -79,11 +80,11 @@ class PredictStrategy(bt.Strategy):
             return
         else:
             pred = int(preds.EnsembleVoteClassifier_pred.iat[0])  # get EnsembleVoteClassifier's prediction
-        self.log(f"today close: {self.close[0]} predict: {pred}")
+        # self.log(f"today close: {self.close[0]} predict: {pred}")
         if pred == 0:  # ytm down, price up, buy
             self.order = self.buy(
                 data=self.getdatabyname(self.tb_name),
-                size=10,
+                size=self.__buy_all(self.close[0]),
                 price=self.close[0],  # buy at today's close price
                 exectype=bt.Order.Limit,
                 valid=timedelta(days=1)  # valid until the end of tomorrow
@@ -91,13 +92,61 @@ class PredictStrategy(bt.Strategy):
         elif pred == 1:  # ytm up, price down, sell
             self.order = self.sell(
                 data=self.getdatabyname(self.tb_name),
-                size=10,
+                size=self.__sell_all(),
                 price=self.close[0],  # sell at today's close price
                 exectype=bt.Order.Limit,
                 valid=timedelta(days=1)  # valid until the end of tomorrow
             )
         else:
             raise ValueError(f"The prediction is neither 0 nor 1")
+
+    def __sell_size(self):
+        """
+        根据持仓情况生成卖出的数量，卖出数量不超过预先设定的值，且确保不会卖空。
+            Returns:
+                size(int): 应卖出的数量，大于或等于 0
+        """
+        size = 10
+        position_size = self.getpositionbyname(self.tb_name).size
+        if position_size <= 0:
+            return 0
+        elif position_size - size >= 0:
+            return size
+        else:
+            return size - position_size
+
+    def __sell_all(self):
+        """
+        卖出所有持仓，且确保不会卖空。
+             Returns:
+                size(int): 应卖出的数量，大于或等于 0
+        """
+        size = self.getpositionbyname(self.tb_name).size
+        if size <= 0:
+            return 0
+        else:
+            return size
+
+    def __buy_size(self):
+        """
+        根据持仓情况生成买入的数量。
+        """
+        return 10
+
+    def __buy_all(self, price):
+        """
+        用所有现金买入。
+             Args:
+                 price(float): 单价
+             Returns:
+                size(int): 应买入的数量，大于或等于 0
+        """
+        cash = self.broker.get_cash()
+        if cash <= 0:
+            return 0
+        else:
+            size = cash / price
+            return math.floor(size)
 
 # Create a cerebro entity
 cerebro = bt.Cerebro()
@@ -106,15 +155,15 @@ cerebro = bt.Cerebro()
 cerebro.addstrategy(PredictStrategy)
 
 price_df = pd.read_csv('d:/ProjectRicequant/fxincome/fxincome_features_latest.csv', parse_dates=['date'])
-tbond_name = '019547.SH'
+# price_df = price_df[price_df['date'] < datetime.datetime(2021, 4, 15)]
 
 # Pass it to the backtrader datafeed and add it to the cerebro
 data1 = TBondData(dataname=price_df, nocase=True)
-cerebro.adddata(data1, name=tbond_name)
+cerebro.adddata(data1, name=PredictStrategy.tb_name)
 
 cerebro.broker.set_fundmode(True, 1)
 cerebro.broker.set_cash(10000)
-cerebro.broker.setcommission(commission=0.0002, name=tbond_name)  # commission is 0.02%
+cerebro.broker.setcommission(commission=0.0002, name=PredictStrategy.tb_name)  # commission is 0.02%
 cerebro.addanalyzer(bt.analyzers.TimeReturn, fund=True)
 cerebro.addobserver(bt.observers.FundValue)
 cerebro.addobserver(bt.observers.FundShares)
@@ -122,7 +171,7 @@ cerebro.addobserver(bt.observers.FundShares)
 strategies = cerebro.run()
 
 # Plot the result
-cerebro.plot(style='bar')
+# cerebro.plot(style='bar')
 
 broker = cerebro.broker
 print('Cash:' + str(broker.get_cash()))
