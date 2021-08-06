@@ -77,8 +77,7 @@ def feature_engineering(df, select_features, future_period, label_type='fwd', dr
     logger.info(f"After feature engineering, sample size is {len(df)}")
     return df
 
-
-if __name__ == '__main__':
+def main():
     ROOT_PATH = 'd:/ProjectRicequant/fxincome/'
     SRC_NAME = 'fxincome_features.csv'
     DEST_NAME = 'fxincome_processed.csv'
@@ -86,3 +85,6 @@ if __name__ == '__main__':
     df = pd.read_csv(os.path.join(ROOT_PATH, SRC_NAME), parse_dates=['date'])
     df = feature_engineering(df, TBOND_PARAM.ALL_FEATS, future_period=1, label_type='fwd')
     df.to_csv(os.path.join(ROOT_PATH, DEST_NAME), index=False, encoding='utf-8')
+
+if __name__ == '__main__':
+    main()

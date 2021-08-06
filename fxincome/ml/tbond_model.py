@@ -168,24 +168,18 @@ def train(train_X, train_y, val_X, val_y, test_X, test_y):
     logger.info("GridSearch Report:\n _____________")
     grid_score = report_model(grid_model, test_X, test_y, train_X, train_y, val_X, val_y, feat_importance=True)
 
-    # rnd_clf = RandomForestClassifier(n_estimators=300,
-    #                                  max_samples=0.7,
-    #                                  min_samples_leaf=0.001,
-    #                                  max_leaf_nodes=100,
-    #                                  max_depth=20,
-    #                                  oob_score=True,
-    #                                  n_jobs=-1)
     if random_score > grid_score:
         return random_model, f"{random_score}-RandomSearch-{datetime.datetime.now():%Y%m%d-%H%M}"
     return grid_model, f"{grid_score}-GridSearch-{datetime.datetime.now():%Y%m%d-%H%M}"
 
 
-def rfc_train(train_X, train_y, val_X, val_y, test_X, test_y):
+def rfc_train(train_X, train_y, val_X, val_y, test_X, test_y, period):
     """
     使用RandomForestClassifier 训练模型并输出报告，返回最佳模型及附带分数的模型名字
+        Args: period(str): 预测的内容，是模型名字的一部分，以供辨识。比如：1d_fwd表示预测 1 day forward 的涨跌方向
         Returns:
             model(RandomForestClassifer)：最佳的模型
-            name(str): 对应的分数 + 预测的内容 + 日期时点。 分数保留3位小数， 预测的内容由全局变量PERIOD(str)决定。
+            name(str): 对应的分数 + 预测的内容 + 日期时点。 分数保留3位小数， 预测的内容由period(str)决定。
     """
     combined_train_X = train_X.append(val_X)
     combined_train_y = np.append(train_y, val_y)
@@ -213,15 +207,16 @@ def rfc_train(train_X, train_y, val_X, val_y, test_X, test_y):
                                                                      rfc=True, feat_importance=True)
         epoch += 1
 
-    return best_rfc, f"{test_score}-{PERIOD}-RFC-{datetime.datetime.now():%Y%m%d-%H%M}"
+    return best_rfc, f"{test_score}-{period}-RFC-{datetime.datetime.now():%Y%m%d-%H%M}"
 
 
-def xgb_train(train_X, train_y, val_X, val_y, test_X, test_y):
+def xgb_train(train_X, train_y, val_X, val_y, test_X, test_y, period):
     """
     训练XGBoost模型并输出报告，返回最佳模型及附带分数的模型名字。用了early_stopping，训练样本留了一块作为early_stopping的val set
+        Args: period(str): 预测的内容，是模型名字的一部分，以供辨识。比如：1d_fwd表示预测 1 day forward 的涨跌方向
         Returns:
             model(XGBoost)：最佳的模型
-            name(str): 对应的分数 + 预测的内容 + 日期时点。 分数保留3位小数， 预测的内容由全局变量PERIOD(str)决定。
+            name(str): 对应的分数 + 预测的内容 + 日期时点。 分数保留3位小数， 预测的内容由period(str)决定。
     """
     # combined_train_X = train_X.append(val_X)
     # combined_train_y = np.append(train_y, val_y)
@@ -249,15 +244,16 @@ def xgb_train(train_X, train_y, val_X, val_y, test_X, test_y):
                                                                      train_y, val_X, val_y, feat_importance=True)
         epoch += 1
 
-    return best_xgb, f"{test_score}-{PERIOD}-XGB-{datetime.datetime.now():%Y%m%d-%H%M}"
+    return best_xgb, f"{test_score}-{period}-XGB-{datetime.datetime.now():%Y%m%d-%H%M}"
 
 
-def svm_train(train_X, train_y, val_X, val_y, test_X, test_y):
+def svm_train(train_X, train_y, val_X, val_y, test_X, test_y, period):
     """
     训练SVM模型并输出报告，返回最佳模型及附带分数的模型名字。Kernel为Gaussian RBF kernel
+        Args: period(str): 预测的内容，是模型名字的一部分，以供辨识。比如：1d_fwd表示预测 1 day forward 的涨跌方向
         Returns:
             model(Support Vector Classification)：最佳的模型
-            name(str): 对应的分数 + 预测的内容 + 日期时点。 分数保留3位小数， 预测的内容由全局变量PERIOD(str)决定。
+            name(str): 对应的分数 + 预测的内容 + 日期时点。 分数保留3位小数， 预测的内容由全局变量period(str)决定。
     """
     combined_train_X = train_X.append(val_X)
     combined_train_y = np.append(train_y, val_y)
@@ -294,15 +290,16 @@ def svm_train(train_X, train_y, val_X, val_y, test_X, test_y):
                                                                      train_y, val_X, val_y)
         epoch += 1
 
-    return best_svm, f"{test_score}-{PERIOD}-SVM-{datetime.datetime.now():%Y%m%d-%H%M}"
+    return best_svm, f"{test_score}-{period}-SVM-{datetime.datetime.now():%Y%m%d-%H%M}"
 
 
-def svm_poly_train(train_X, train_y, val_X, val_y, test_X, test_y):
+def svm_poly_train(train_X, train_y, val_X, val_y, test_X, test_y, period):
     """
     训练SVM模型并输出报告，返回最佳模型及附带分数的模型名字。Kernel为Polynominal
+        Args: period(str): 预测的内容，是模型名字的一部分，以供辨识。比如：1d_fwd表示预测 1 day forward 的涨跌方向
         Returns:
             model(Support Vector Classification)：最佳的模型
-            name(str): 对应的分数 + 预测的内容 + 日期时点。 分数保留3位小数， 预测的内容由全局变量PERIOD(str)决定。
+            name(str): 对应的分数 + 预测的内容 + 日期时点。 分数保留3位小数， 预测的内容由全局变量period(str)决定。
     """
     combined_train_X = train_X.append(val_X)
     combined_train_y = np.append(train_y, val_y)
@@ -329,15 +326,16 @@ def svm_poly_train(train_X, train_y, val_X, val_y, test_X, test_y):
                                                                      train_y, val_X, val_y)
         epoch += 1
 
-    return test_score, best_svm, f"{test_score}-{PERIOD}-POLY-{datetime.datetime.now():%Y%m%d-%H%M}"
+    return test_score, best_svm, f"{test_score}-{period}-POLY-{datetime.datetime.now():%Y%m%d-%H%M}"
 
 
-def lr_train(train_X, train_y, val_X, val_y, test_X, test_y):
+def lr_train(train_X, train_y, val_X, val_y, test_X, test_y, period):
     """
     训练Logistic Regression 模型并输出报告，返回最佳模型及附带分数的模型名字。
+        Args: period(str): 预测的内容，是模型名字的一部分，以供辨识。比如：1d_fwd表示预测 1 day forward 的涨跌方向
         Returns:
             model(LogisticRegression)：最佳的模型
-            name(str): 对应的分数 + 预测的内容 + 日期时点。 分数保留3位小数， 预测的内容由全局变量PERIOD(str)决定。
+            name(str): 对应的分数 + 预测的内容 + 日期时点。 分数保留3位小数， 预测的内容由period(str)决定。
     """
     combined_train_X = train_X.append(val_X)
     combined_train_y = np.append(train_y, val_y)
@@ -354,7 +352,7 @@ def lr_train(train_X, train_y, val_X, val_y, test_X, test_y):
                                                                  test_X, test_y, train_X,
                                                                  train_y, val_X, val_y)
 
-    return test_score, best_lr, f"{test_score}-{PERIOD}-LR-{datetime.datetime.now():%Y%m%d-%H%M}"
+    return test_score, best_lr, f"{test_score}-{period}-LR-{datetime.datetime.now():%Y%m%d-%H%M}"
 
 
 def report_model(model, test_X, test_y, train_X, train_y, val_X, val_y, rfc=False, feat_importance=False):
@@ -388,8 +386,7 @@ def report_model(model, test_X, test_y, train_X, train_y, val_X, val_y, rfc=Fals
             logger.info(f"{f_name}, {float(score):.2f}")
     return round(model_score, 3), train_score, val_score, obb_score
 
-
-if __name__ == '__main__':
+def main():
     ROOT_PATH = 'd:/ProjectRicequant/fxincome/'
     sample_file = 'd:/ProjectRicequant/fxincome/fxincome_processed.csv'
 
@@ -411,3 +408,6 @@ if __name__ == '__main__':
     # score, model, name = lr_train(train_X, train_y, val_X, val_y, test_X, test_y)
     # if score > 0.57:
     #     joblib.dump(model, f"models/{name}.pkl")
+
+if __name__ == '__main__':
+    main()

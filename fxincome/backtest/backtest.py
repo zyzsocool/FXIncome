@@ -1,10 +1,10 @@
 # -*- coding: utf-8; py-indent-offset:4 -*-
 
 from datetime import timedelta
+from collections import OrderedDict
 import math
 import backtrader as bt
 import pandas as pd
-
 
 class TBondData(bt.feeds.PandasData):
     # 对应OHLC净价的 OHLC YTM，在lines里分别命名如下
@@ -148,37 +148,81 @@ class PredictStrategy(bt.Strategy):
             size = cash / price
             return math.floor(size)
 
-# Create a cerebro entity
-cerebro = bt.Cerebro()
 
-# Add a strategy
-cerebro.addstrategy(PredictStrategy)
+class TotalValue(bt.Analyzer):
+    """
+    This analyzer will get total value from every next.
+          Returns:
+          Returns a dictionary with returns as values and the datetime points for each return as keys
+    """
+    params = ()
+    def __init__(self):
+        super(TotalValue, self).__init__()
 
-price_df = pd.read_csv('d:/ProjectRicequant/fxincome/fxincome_features_latest.csv', parse_dates=['date'])
-# price_df = price_df[price_df['date'] < datetime.datetime(2021, 4, 15)]
+    def start(self):
+        super(TotalValue, self).start()
+        self.rets = OrderedDict()
 
-# Pass it to the backtrader datafeed and add it to the cerebro
-data1 = TBondData(dataname=price_df, nocase=True)
-cerebro.adddata(data1, name=PredictStrategy.tb_name)
+    def next(self):
+        # Calculate the return
+        super(TotalValue, self).next()
+        datetime_index = self.strategy.getdatabyname(PredictStrategy.tb_name).datetime.datetime()
+        self.rets[datetime_index] = self.strategy.broker.getvalue()
 
-cerebro.broker.set_fundmode(True, 1)
-cerebro.broker.set_cash(10000)
-cerebro.broker.setcommission(commission=0.0002, name=PredictStrategy.tb_name)  # commission is 0.02%
-cerebro.addanalyzer(bt.analyzers.TimeReturn, fund=True)
-cerebro.addobserver(bt.observers.FundValue)
-cerebro.addobserver(bt.observers.FundShares)
-# Run over everything
-strategies = cerebro.run()
+    def get_analysis(self):
+        return self.rets
 
-# Plot the result
-# cerebro.plot(style='bar')
+def main():
+    # Create a cerebro entity
+    cerebro = bt.Cerebro()
 
-broker = cerebro.broker
-print('Cash:' + str(broker.get_cash()))
-print('Value:' + str(broker.get_value()))
-print('fund value:' + str(broker.get_fundvalue()))
-print('fund share:' + str(broker.get_fundshares()))
+    # Add a strategy
+    cerebro.addstrategy(PredictStrategy)
 
-print(data1._name)
-position = cerebro.broker.getposition(data1)
-print(position)
+    price_df = pd.read_csv('d:/ProjectRicequant/fxincome/fxincome_features_latest.csv', parse_dates=['date'])
+    # price_df = price_df[price_df['date'] < datetime.datetime(2021, 4, 15)]
+
+    # Pass it to the backtrader datafeed and add it to the cerebro
+    data1 = TBondData(dataname=price_df, nocase=True)
+    cerebro.adddata(data1, name=PredictStrategy.tb_name)
+
+    cerebro.broker.set_fundmode(True, 1)
+    cerebro.broker.set_cash(10000)
+    cerebro.broker.setcommission(commission=0.0002, name=PredictStrategy.tb_name)  # commission is 0.02%
+    #  Add analyzers
+    cerebro.addanalyzer(bt.analyzers.TimeReturn, fund=True, _name='TimeReturn')
+    cerebro.addanalyzer(TotalValue, _name='TotalValue')
+    cerebro.addanalyzer(bt.analyzers.SharpeRatio,
+                        timeframe=bt.TimeFrame.Weeks,
+                        riskfreerate=0.02,  # annual rate
+                        fund=True,
+                        _name='SharpRatio')
+    cerebro.addanalyzer(bt.analyzers.SQN, _name='SQN')
+    cerebro.addanalyzer(bt.analyzers.DrawDown, fund=True, _name='DrawDown')
+    #  Add observers
+    cerebro.addobserver(bt.observers.FundValue)
+    cerebro.addobserver(bt.observers.FundShares)
+    # Run over everything
+    strategies = cerebro.run()
+
+    # Plot the result
+    cerebro.plot(style='bar')
+
+    broker = cerebro.broker
+    print('Cash:' + str(broker.get_cash()))
+    print('Value:' + str(broker.get_value()))
+    print('fund value:' + str(broker.get_fundvalue()))
+    print('fund share:' + str(broker.get_fundshares()))
+
+    print(data1._name)
+    position = cerebro.broker.getposition(data1)
+    print(position)
+    sharp_ratio = strategies[0].analyzers.SharpRatio
+    sqn = strategies[0].analyzers.SQN
+    draw_down = strategies[0].analyzers.DrawDown
+    sharp_ratio.print()
+    sqn.print()
+    draw_down.print()
+
+if __name__ == '__main__':
+    main()
