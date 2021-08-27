@@ -70,14 +70,14 @@ class PredictStrategy(bt.Strategy):
     def next(self):
         # Cancel the pending order if there is one
         self.cancel(self.order)
-        today = self.getdatabyname(self.tb_name).datetime.date(0)
+        today = self.getdatabyname(self.tb_name).datetime.datetime(0)
         preds = self.pred_df.query('date == @today')   # get ytm prediction for tomorrow
         if len(preds) == 0:  # Do nothing if no prediction
             return
         else:
             pred = int(preds.EnsembleVoteClassifier_pred.iat[0])  # get EnsembleVoteClassifier's prediction
-        # valid until the t+2 day's next()
-        valid_day = timedelta(days=1)
+        # valid until the t+2 bar's next()
+        valid_day = self.getdatabyname(self.tb_name).datetime.datetime(1)
 
         if pred == 0:  # ytm down, price up, buy
             self.order = self.buy(
@@ -145,8 +145,6 @@ class PredictStrategy(bt.Strategy):
         else:
             size = cash / price
             return math.floor(size)
-
-
 
 
 def main():

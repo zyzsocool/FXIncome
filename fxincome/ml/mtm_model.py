@@ -83,7 +83,7 @@ train, val, test 数据集的比例分别是：train = 1 - val_ratio - test_rati
 train set的labels分布比例遵从所有样本的labels的分布比例
 
     Args:
-        main_df(DataFrame): 包含所有样本的dataframe，含labels
+        df(DataFrame): 包含所有样本的dataframe，含labels
         root_path(str): 分解结果csv的存储根目录
         val_ratio(float): 验证集的比例
         test_ratio(float): 测试集的比例 
