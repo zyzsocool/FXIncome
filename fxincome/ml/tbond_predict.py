@@ -138,8 +138,7 @@ def pred_future(models, df, future_period=1, label_type='fwd'):
         probas.append(proba)
     return preds, probas
 
-
-if __name__ == '__main__':
+def main():
     ROOT_PATH = 'd:/ProjectRicequant/fxincome/'
 
     sample_file = r'd:\ProjectRicequant\fxincome\fxincome_features_latest.csv'
@@ -164,3 +163,7 @@ if __name__ == '__main__':
     # history_result = val_models([pol_model], test_df)
     # pred_future([pol_model], sample_df, future_period=1, label_type='fwd')
     history_result.to_csv(os.path.join(ROOT_PATH, 'history_result.csv'), index=False, encoding='utf-8')
+
+
+if __name__ == '__main__':
+    main()
