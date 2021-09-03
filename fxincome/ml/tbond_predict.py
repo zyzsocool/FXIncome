@@ -160,8 +160,6 @@ def main():
     vote_model.fit(val_X, val_y)
     history_result = val_models([vote_model, xgb_model, rfc_model], test_df)
     pred_future([vote_model, xgb_model, rfc_model], sample_df, future_period=1, label_type='fwd')
-    # history_result = val_models([pol_model], test_df)
-    # pred_future([pol_model], sample_df, future_period=1, label_type='fwd')
     history_result.to_csv(os.path.join(ROOT_PATH, 'history_result.csv'), index=False, encoding='utf-8')
 
 
