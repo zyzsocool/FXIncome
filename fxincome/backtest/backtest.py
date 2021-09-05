@@ -131,6 +131,22 @@ class PredictStrategy(bt.Strategy):
         """
         return 10
 
+    def __buy_kelly(self, price):
+        """
+         用剩余现金 * kelly_ratio 买入债券。
+              Args:
+                  price(float): 单价
+              Returns:
+                 size(int): 应买入的数量，大于或等于 0
+         """
+        kelly_ratio = 0.43
+        cash = self.broker.get_cash()
+        if cash <= 0:
+            return 0
+        else:
+            size = cash * kelly_ratio / price
+            return math.floor(size)
+
     def __buy_all(self, price):
         """
         用所有现金买入。
