@@ -2,8 +2,9 @@ import pytest
 import joblib
 import os
 from fxincome.utils import ModelAttr, JsonModel
-class TestModel:
 
+
+class TestModel:
     @pytest.fixture(scope='class')
     def global_data(self):
         os.chdir('../fxincome')
@@ -43,20 +44,27 @@ class TestModel:
             'rfc_model': rfc_model
         }
 
-    def test_save_model(self, global_data):
+    def test_save_attr(self, global_data):
         lstm_model = global_data['lstm_model']
-        JsonModel.save_model(lstm_model)
-        model = JsonModel.load_model(lstm_model.name)
+        JsonModel.save_attr(lstm_model)
+        model = JsonModel.load_attr(lstm_model.name)
         assert lstm_model.name == model.name
         assert lstm_model.features == model.features
         assert lstm_model.scaled_feats == model.scaled_feats
         assert lstm_model.stats == model.stats
-        JsonModel.save_model(global_data['xgb_model'])
-        JsonModel.save_model(global_data['rfc_model'])
+        JsonModel.save_attr(global_data['xgb_model'])
+        JsonModel.save_attr(global_data['rfc_model'])
 
-    def test_load_model(self, global_data):
+    def test_load_attr(self, global_data):
         xgb_model = global_data['xgb_model']
-        model = JsonModel.load_model(xgb_model.name)
+        model = JsonModel.load_attr(xgb_model.name)
         assert xgb_model.name == model.name
         assert xgb_model.features == model.features
-        assert JsonModel.load_model('Non-Exists') is None
+        assert JsonModel.load_attr('Non-Exists') is None
+
+    def test_load_models(self, global_data):
+        plain_names = [global_data['xgb_name'], global_data['rfc_name']]
+        nn_names = [global_data['lstm_name']]
+        plain_dict, nn_dict = JsonModel.load_models(plain_names, nn_names)
+        xgb_model = joblib.load(JsonModel.model_path + global_data['xgb_name'])
+        assert plain_dict[global_data['xgb_model']].get_params() == xgb_model.get_params()

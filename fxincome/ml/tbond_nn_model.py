@@ -122,23 +122,26 @@ def evaluate():
     latest_x, latest_y = tbond_nn_predata.gen_trainset(latest_df, data_columns, TBOND_PARAM.FEAT_OUTLINERS,
                                                    seq_len=x_days, balance=False)
 
-    # plot_graph(train_x, train_y, test_x, test_y, model=best_model)
+    plot_graph(train_x, train_y, test_x, test_y, model=best_model)
 
-    best_model.summary()
+    # best_model.summary()
 
     score = best_model.evaluate(train_x, train_y, verbose=0)
     logger.info(f'Best model for train samples accuracy:{score[1]:.4f}, loss:{score[0]:.4f}')
     score = best_model.evaluate(val_x, val_y, verbose=0)
     logger.info(f'Best model for val samples accuracy:{score[1]:.4f}, loss:{score[0]:.4f}')
     score = best_model.evaluate(test_x, test_y, verbose=0)
-    logger.info(f'Best model for train samples accuracy:{score[1]:.4f}, loss:{score[0]:.4f}')
+    logger.info(f'Best model for test samples accuracy:{score[1]:.4f}, loss:{score[0]:.4f}')
     score = best_model.evaluate(latest_x, latest_y, verbose=0)
     logger.info(f'Best model for latest samples accuracy:{score[1]:.4f}, loss:{score[0]:.4f}')
 
-    # preds = best_model.predict(train_x[49:50,:,:])
-    # logger.info(f"X Shape: {train_x.shape} X[:50] Shape: {train_x[49:50,:,:].shape} Prediction Shape: {preds.shape}")
-    # for pred in preds:
-    #     logger.info(f"pred[0]: {pred[0]}")
+    latest_x = tbond_nn_predata.gen_pred_x(latest_df, datetime.datetime(2021, 4, 12), TBOND_PARAM.NN_TRAIN_FEATS,
+                                           seq_len=x_days)
+
+    preds = best_model.predict(latest_x)
+    logger.info(f"X Shape: {latest_x.shape} Prediction Shape: {preds.shape}")
+    for pred in preds:
+        logger.info(f"pred[0]: {pred[0]}")
 
 def main():
     x_days = 10  # 用过去10天的x数据

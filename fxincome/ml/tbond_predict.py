@@ -9,9 +9,12 @@ import xgboost
 from fxincome.const import TBOND_PARAM
 from fxincome.ml import tbond_process_data, tbond_model
 from fxincome import logger
+from fxincome.utils import JsonModel, ModelAttr
 from sklearn.metrics import classification_report
 from sklearn.ensemble import RandomForestClassifier
 from mlxtend.classifier import EnsembleVoteClassifier
+import tensorflow.keras as keras
+
 
 def show_tree(model):
     """
@@ -37,15 +40,15 @@ def show_tree(model):
     plt.show()
 
 
-
-
-def val_models(models, df):
+def eval_plain_models(models, df):
     """
-    用最新的数据检验模型。输入可为多个模型。对于每个模型，依次显示模型的name， params, test_report, score, feature_importances（如有）
+    用最新的数据检验模型。这些模型通常是树模型、SVM、LR等传统模型。
+    输入可为多个模型。对于每个模型，依次显示模型的name， params, test_report, score, feature_importances（如有）
     只有树状模型才显示feature_importance，目前只支持'XGBClassifier'和'RandomForestClassifier'
         Args:
-            models(List): A list of models. 每个model必须具有以下methods:
-                predict(X), score(X,y), predict_proba(X)
+            models(List): A list of models. 它们需要满足以下条件：
+                1.具有以下methods: predict(X), predict_proba(X), score(X,y)
+                2.X是dataframe的单行。
             df(DataFrame): 检验数据，含日期，含labels，需要做好预处理
         Returns:
             history_result(DataFrame): 'date', 'actual', [每个model预测的'result', 'pred', 'actual', 'down_proba', 'up_proba']
@@ -67,7 +70,63 @@ def val_models(models, df):
         logger.info(f"Test score is: {model_score}")
         if name in ['XGBClassifier', 'RandomForestClassifier']:
             logger.info("Feature importances")
-            for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_), key=lambda x: x[1], reverse=True):
+            for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_), key=lambda x: x[1],
+                                        reverse=True):
+                logger.info(f"{f_name}, {float(score):.2f}")
+        probs = model.predict_proba(X)
+        df.insert(len(df.columns), column=f'{name}_pred', value=test_pred)
+        df.insert(len(df.columns), column=f'{name}_actual', value=y)
+        df = df.copy()
+        df[name] = df.apply(lambda x: 'Right' if x[f'{name}_pred'] == x[f'{name}_actual'] else 'Wrong', axis=1)
+        df[f'{name}_down'], df[f'{name}_up'] = probs[:, 0], probs[:, 1]
+        names.append(name)
+    for name in names:
+        col_names.append(name)
+        col_names.append(f'{name}_pred')
+        col_names.append(f'{name}_actual')
+        col_names.append(f'{name}_down')
+        col_names.append(f'{name}_up')
+    history_result = df[col_names].copy()
+    history_result.loc['average'] = history_result.mean(numeric_only=True)
+    return history_result
+
+
+def eval_models(plain_names: list, nn_names: list, df):
+    """
+    用最新的数据检验模型。这些模型分为plain models（通常是树模型、SVM、LR等传统模型）和nn models（通常是神经网络模型）
+    输入为模型名字的列表。
+    对于plain models，依次显示模型的name， params, test_report, score, features, feature_importances（如有）
+        只有树状模型才显示feature_importance，目前只支持'XGBClassifier'和'RandomForestClassifier'
+    对于nn models，依次显示模型的name，features，summary（结构）
+        Args:
+            plain_names(list): A list of strs. 传统模型的名字。模型需要满足以下条件：
+                1.具有以下methods: predict(X), predict_proba(X), score(X,y)
+                2.X是dataframe的单行。
+            nn_names(list): A list of strs. 神经网络模型的名字。
+            df(DataFrame): 检验数据，含日期，需预处理好所有features和labels，输入的模型应基于这些features和labels训练。
+        Returns:
+            history_result(DataFrame): 'date', 'actual', [每个model预测的'result', 'pred', 'actual', 'down_proba', 'up_proba']
+    """
+
+    X = df[TBOND_PARAM.TRAIN_FEATS]
+    y = df[TBOND_PARAM.LABELS].squeeze().to_numpy()
+    df = df[['date']]
+    names = []
+    col_names = ['date']
+    for model in models:
+        name = model.__class__.__name__
+        if name == 'Pipeline':
+            name = model.steps[-1][0]
+        logger.info(f"Model: {name}")
+        logger.info(model.get_params)
+        test_pred = model.predict(X)
+        model_score = model.score(X, y)
+        print(classification_report(y, test_pred))
+        logger.info(f"Test score is: {model_score}")
+        if name in ['XGBClassifier', 'RandomForestClassifier']:
+            logger.info("Feature importances")
+            for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_), key=lambda x: x[1],
+                                        reverse=True):
                 logger.info(f"{f_name}, {float(score):.2f}")
         probs = model.predict_proba(X)
         df.insert(len(df.columns), column=f'{name}_pred', value=test_pred)
@@ -102,10 +161,10 @@ def pred_future(models, df, future_period=1, label_type='fwd'):
             probas(List): 3D array-like of shape(n_models, n_dates, 2), model顺序与输入的顺序一样；最后一项为[下跌概率， 上涨概率]
     """
     df = tbond_process_data.feature_engineering(df,
-                                          select_features=TBOND_PARAM.ALL_FEATS,
-                                          future_period=future_period,
-                                          label_type=label_type,
-                                          dropna=False)
+                                                select_features=TBOND_PARAM.ALL_FEATS,
+                                                future_period=future_period,
+                                                label_type=label_type,
+                                                dropna=False)
     today = df.date.iloc[-1].date()
     last_x = df[TBOND_PARAM.TRAIN_FEATS].tail(1)
     preds = []
@@ -138,27 +197,28 @@ def pred_future(models, df, future_period=1, label_type='fwd'):
         probas.append(proba)
     return preds, probas
 
+
 def main():
     ROOT_PATH = 'd:/ProjectRicequant/fxincome/'
 
     sample_file = r'd:\ProjectRicequant\fxincome\fxincome_features_latest.csv'
     sample_df = pd.read_csv(sample_file, parse_dates=['date'])
     test_df = tbond_process_data.feature_engineering(sample_df,
-                                               select_features=TBOND_PARAM.ALL_FEATS,
-                                               future_period=1,
-                                               label_type='fwd')
+                                                     select_features=TBOND_PARAM.ALL_FEATS,
+                                                     future_period=1,
+                                                     label_type='fwd')
     test_df.to_csv(os.path.join(ROOT_PATH, 'test_df.csv'), index=False, encoding='utf-8')
     train_X, train_y, val_X, val_y, test_X, test_y = tbond_model.generate_dataset(test_df, root_path=ROOT_PATH,
-                                                                                val_ratio=0.1, test_ratio=0.1)
+                                                                                  val_ratio=0.1, test_ratio=0.1)
     # svm_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1433-v2016.pkl")
     rfc_model = joblib.load(f"models/0.605-1d_fwd-RFC-20210619-1346-v2018.pkl")
     xgb_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1454-v2016.pkl")
     # pol_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1454-v2016.pkl")
 
     vote_model = EnsembleVoteClassifier(clfs=[xgb_model, rfc_model],
-                                   weights=[1, 1], voting='soft', fit_base_estimators=False)
+                                        weights=[1, 1], voting='soft', fit_base_estimators=False)
     vote_model.fit(val_X, val_y)
-    history_result = val_models([vote_model, xgb_model, rfc_model], test_df)
+    history_result = eval_plain_models([vote_model, xgb_model, rfc_model], test_df)
     pred_future([vote_model, xgb_model, rfc_model], sample_df, future_period=1, label_type='fwd')
     history_result.to_csv(os.path.join(ROOT_PATH, 'history_result.csv'), index=False, encoding='utf-8')
 
