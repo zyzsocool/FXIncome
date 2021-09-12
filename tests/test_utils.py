@@ -1,6 +1,7 @@
 import pytest
 import joblib
 import os
+import tensorflow.keras
 from fxincome.utils import ModelAttr, JsonModel
 
 
@@ -24,13 +25,14 @@ class TestModel:
         lstm_scaled_feats = ['close', 'amount', 't10y', 'fr007_5y', 'spread_usdcny']
         lstm_stats = joblib.load('ml/models/stats-10-SEQ-1-PRED-20210903-1639.pkl')
         xgb_name = '0.626-1d_fwd-XGB-20210618-1454-v2016.pkl'
-        xgb_features = ["spread_usdcny", "spread_t1y", "close", "spread_fr007", "fr007_chg_5",
-                          "avg_chg_5", "pct_chg", "avg_chg_10", "usdcny_chg_5"]
+        xgb_features = ['close', 'pct_chg', 'avg_chg_5', 'avg_chg_10', 'fr007_chg_5', 'spread_t1y',
+                        'spread_fr007', 'spread_usdcny', 'usdcny_chg_5']
         rfc_name = '0.605-1d_fwd-RFC-20210619-1346-v2018.pkl'
         rfc_features = xgb_features
-        lstm_model = ModelAttr(lstm_name, lstm_features, lstm_scaled_feats, lstm_stats)
-        xgb_model = ModelAttr(xgb_name, xgb_features)
-        rfc_model = ModelAttr(rfc_name, rfc_features)
+        labels = ['target']
+        lstm_model = ModelAttr(lstm_name, lstm_features, labels, lstm_scaled_feats, lstm_stats)
+        xgb_model = ModelAttr(xgb_name, xgb_features, labels)
+        rfc_model = ModelAttr(rfc_name, rfc_features, labels)
         return {
             'lstm_name': lstm_name,
             'lstm_features': lstm_features,
@@ -39,6 +41,7 @@ class TestModel:
             'xgb_name': xgb_name,
             'xgb_features': xgb_features,
             'rfc_name': rfc_name,
+            'labels': labels,
             'lstm_model': lstm_model,
             'xgb_model': xgb_model,
             'rfc_model': rfc_model
@@ -62,9 +65,16 @@ class TestModel:
         assert xgb_model.features == model.features
         assert JsonModel.load_attr('Non-Exists') is None
 
-    def test_load_models(self, global_data):
+    def test_load_plain_models(self, global_data):
         plain_names = [global_data['xgb_name'], global_data['rfc_name']]
-        nn_names = [global_data['lstm_name']]
-        plain_dict, nn_dict = JsonModel.load_models(plain_names, nn_names)
+        plain_dict = JsonModel.load_plain_models(plain_names)
         xgb_model = joblib.load(JsonModel.model_path + global_data['xgb_name'])
-        assert plain_dict[global_data['xgb_model']].get_params() == xgb_model.get_params()
+        plain_model = plain_dict[global_data['xgb_model']]
+        assert plain_model.get_params()['gamma'] == xgb_model.get_params()['gamma']
+
+    def test_load_nn_models(self, global_data):
+        nn_names = [global_data['lstm_name']]
+        nn_dict = JsonModel.load_nn_models(nn_names)
+        lstm_model = tensorflow.keras.models.load_model(JsonModel.model_path + global_data['lstm_name'])
+        nn_model = nn_dict[global_data['lstm_model']]
+        assert nn_model.summary() == lstm_model.summary()

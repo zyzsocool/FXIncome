@@ -40,39 +40,41 @@ def show_tree(model):
     plt.show()
 
 
-def eval_plain_models(models, df):
+def eval_plain_models(names: list, engineered_df):
     """
     用最新的数据检验模型。这些模型通常是树模型、SVM、LR等传统模型。
     输入可为多个模型。对于每个模型，依次显示模型的name， params, test_report, score, feature_importances（如有）
     只有树状模型才显示feature_importance，目前只支持'XGBClassifier'和'RandomForestClassifier'
         Args:
-            models(List): A list of models. 它们需要满足以下条件：
+            names(List): A list of model names. Models需要满足以下条件：
                 1.具有以下methods: predict(X), predict_proba(X), score(X,y)
                 2.X是dataframe的单行。
-            df(DataFrame): 检验数据，含日期，含labels，需要做好预处理
+            engineered_df(DataFrame): 检验数据，含日期，含labels，需要做好预处理
         Returns:
             history_result(DataFrame): 'date', 'actual', [每个model预测的'result', 'pred', 'actual', 'down_proba', 'up_proba']
     """
-    X = df[TBOND_PARAM.TRAIN_FEATS]
-    y = df[TBOND_PARAM.LABELS].squeeze().to_numpy()
-    df = df[['date']]
+    models = JsonModel.load_plain_models(names)
+    df = engineered_df[['date']]
     names = []
     col_names = ['date']
-    for model in models:
+    for attr, model in models.items():
         name = model.__class__.__name__
         if name == 'Pipeline':
             name = model.steps[-1][0]
         logger.info(f"Model: {name}")
         logger.info(model.get_params)
+        if name in ['XGBClassifier', 'RandomForestClassifier']:
+            logger.info("Feature importances")
+            for f_name, score in sorted(zip(attr.features, model.feature_importances_), key=lambda x: x[1],
+                                        reverse=True):
+                logger.info(f"{f_name}, {float(score):.2f}")
+        X = engineered_df[attr.features]
+        y = engineered_df[attr.labels].squeeze().to_numpy()
         test_pred = model.predict(X)
         model_score = model.score(X, y)
         print(classification_report(y, test_pred))
         logger.info(f"Test score is: {model_score}")
-        if name in ['XGBClassifier', 'RandomForestClassifier']:
-            logger.info("Feature importances")
-            for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_), key=lambda x: x[1],
-                                        reverse=True):
-                logger.info(f"{f_name}, {float(score):.2f}")
+
         probs = model.predict_proba(X)
         df.insert(len(df.columns), column=f'{name}_pred', value=test_pred)
         df.insert(len(df.columns), column=f'{name}_actual', value=y)
@@ -107,18 +109,20 @@ def eval_models(plain_names: list, nn_names: list, df):
         Returns:
             history_result(DataFrame): 'date', 'actual', [每个model预测的'result', 'pred', 'actual', 'down_proba', 'up_proba']
     """
+    plain_result = eval_plain_models(plain_names, df)
+    nn_models = JsonModel.load_nn_models(nn_names)  # return a dict(key: ModelAttr, value: model)
 
-    X = df[TBOND_PARAM.TRAIN_FEATS]
-    y = df[TBOND_PARAM.LABELS].squeeze().to_numpy()
     df = df[['date']]
     names = []
     col_names = ['date']
-    for model in models:
+    for attr, model in nn_models.items():
         name = model.__class__.__name__
         if name == 'Pipeline':
             name = model.steps[-1][0]
         logger.info(f"Model: {name}")
         logger.info(model.get_params)
+        X = df[attr.features]
+        y = df[attr.labels].squeeze().to_numpy()
         test_pred = model.predict(X)
         model_score = model.score(X, y)
         print(classification_report(y, test_pred))
@@ -198,6 +202,45 @@ def pred_future(models, df, future_period=1, label_type='fwd'):
     return preds, probas
 
 
+def val_models(models, df):
+    X = df[TBOND_PARAM.TRAIN_FEATS]
+    y = df[TBOND_PARAM.LABELS].squeeze().to_numpy()
+    df = df[['date']]
+    names = []
+    col_names = ['date']
+    for model in models:
+        name = model.__class__.__name__
+        if name == 'Pipeline':
+            name = model.steps[-1][0]
+        logger.info(f"Model: {name}")
+        logger.info(model.get_params)
+        test_pred = model.predict(X)
+        model_score = model.score(X, y)
+        print(classification_report(y, test_pred))
+        logger.info(f"Test score is: {model_score}")
+        if name in ['XGBClassifier', 'RandomForestClassifier']:
+            logger.info("Feature importances")
+            for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_), key=lambda x: x[1],
+                                        reverse=True):
+                logger.info(f"{f_name}, {float(score):.2f}")
+        probs = model.predict_proba(X)
+        df.insert(len(df.columns), column=f'{name}_pred', value=test_pred)
+        df.insert(len(df.columns), column=f'{name}_actual', value=y)
+        df = df.copy()
+        df[name] = df.apply(lambda x: 'Right' if x[f'{name}_pred'] == x[f'{name}_actual'] else 'Wrong', axis=1)
+        df[f'{name}_down'], df[f'{name}_up'] = probs[:, 0], probs[:, 1]
+        names.append(name)
+    for name in names:
+        col_names.append(name)
+        col_names.append(f'{name}_pred')
+        col_names.append(f'{name}_actual')
+        col_names.append(f'{name}_down')
+        col_names.append(f'{name}_up')
+    history_result = df[col_names].copy()
+    history_result.loc['average'] = history_result.mean(numeric_only=True)
+    return history_result
+
+
 def main():
     ROOT_PATH = 'd:/ProjectRicequant/fxincome/'
 
@@ -214,11 +257,13 @@ def main():
     rfc_model = joblib.load(f"models/0.605-1d_fwd-RFC-20210619-1346-v2018.pkl")
     xgb_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1454-v2016.pkl")
     # pol_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1454-v2016.pkl")
+    plain_models = ['0.605-1d_fwd-RFC-20210619-1346-v2018.pkl', '0.626-1d_fwd-XGB-20210618-1454-v2016.pkl']
 
     vote_model = EnsembleVoteClassifier(clfs=[xgb_model, rfc_model],
                                         weights=[1, 1], voting='soft', fit_base_estimators=False)
     vote_model.fit(val_X, val_y)
-    history_result = eval_plain_models([vote_model, xgb_model, rfc_model], test_df)
+    history_result = eval_plain_models(plain_models, test_df)
+    # history_result = val_models([xgb_model, rfc_model], test_df)
     pred_future([vote_model, xgb_model, rfc_model], sample_df, future_period=1, label_type='fwd')
     history_result.to_csv(os.path.join(ROOT_PATH, 'history_result.csv'), index=False, encoding='utf-8')
 
