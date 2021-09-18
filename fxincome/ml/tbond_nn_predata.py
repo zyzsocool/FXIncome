@@ -247,10 +247,9 @@ def gen_trainset(df, columns: list, feature_outliners: list, seq_len=10, balance
 def gen_pred_x(df, today, columns: list, seq_len=10):
     """
     生成用于预测的X
-    输入：1. 已完成特征工程、Scaling的dataframe，包含datetime和features
+    输入：1. 已完成特征工程以及Scaling的dataframe，包含datetime和features
          2. 预测基准日
     输出：符合RNN要求的X。
-    具备特征值异常检测，特征值超过95%阈值的样本将被舍弃。如不需要特征异常检测，可设置feature_outliners为空表。
         Args:
             df(DataFrame): 待处理的dataframe，包含datetime和features。可以含未来样本。
             today(datetime): 预测基准日，筛选出df里在此基准日（含）之前的输入样本。
@@ -272,7 +271,7 @@ def gen_pred_x(df, today, columns: list, seq_len=10):
         if len(prev_days) == seq_len:  # 回溯seq_len个日期
             break
 
-    return np.array([prev_days])
+    return np.array(prev_days)
 
 
 def main():

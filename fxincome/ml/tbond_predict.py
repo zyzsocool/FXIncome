@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import sklearn as sk
 import xgboost
 from fxincome.const import TBOND_PARAM
-from fxincome.ml import tbond_process_data, tbond_model
+from fxincome.ml import tbond_process_data, tbond_model, tbond_nn_predata
 from fxincome import logger
 from fxincome.utils import JsonModel, ModelAttr
 from sklearn.metrics import classification_report
@@ -40,6 +40,34 @@ def show_tree(model):
     plt.show()
 
 
+def vote(row, plain_names: list, nn_names: list, weight: str = 'hard'):
+    """
+    辅助函数，用于对每一行进行Ensemble vote
+        Args:
+            plain_names(list): A list of strs. 传统模型的名字。
+            nn_names(list): A list of strs. 神经网络模型的名字。
+            weight(str): 投票方式，['hard', 'soft']。'hard'是每个模型的权重一样, 'soft'以预测可能性作为权重。
+                模型预测的方向在row中的column name以'_pred'结尾
+                模型预测的上涨可能性row中的column name以'_up'结尾
+        Returns:
+            Ensemble的预测结果，0 or 1
+    """
+    names = plain_names + nn_names
+    score = 0
+    threshold = len(names) / 2  # 过半数的阈值，<= 阈值 返回 0；> 阈值 返回 1
+    for name in names:
+        if weight == 'hard':
+            score = score + row[name + '_pred']
+        elif weight == 'soft':
+            score = score + row[name + '_up']
+        else:
+            raise NotImplementedError("Unknown weight type")
+    if score <= threshold:
+        return 0
+    else:
+        return 1
+
+
 def eval_plain_models(names: list, engineered_df):
     """
     用最新的数据检验模型。这些模型通常是树模型、SVM、LR等传统模型。
@@ -58,12 +86,10 @@ def eval_plain_models(names: list, engineered_df):
     names = []
     col_names = ['date']
     for attr, model in models.items():
-        name = model.__class__.__name__
-        if name == 'Pipeline':
-            name = model.steps[-1][0]
+        name = attr.name
         logger.info(f"Model: {name}")
         logger.info(model.get_params)
-        if name in ['XGBClassifier', 'RandomForestClassifier']:
+        if 'xgb' in name or 'rfc' in name:
             logger.info("Feature importances")
             for f_name, score in sorted(zip(attr.features, model.feature_importances_), key=lambda x: x[1],
                                         reverse=True):
@@ -89,13 +115,14 @@ def eval_plain_models(names: list, engineered_df):
         col_names.append(f'{name}_down')
         col_names.append(f'{name}_up')
     history_result = df[col_names].copy()
-    history_result.loc['average'] = history_result.mean(numeric_only=True)
     return history_result
 
 
-def eval_models(plain_names: list, nn_names: list, df):
+def eval_models(plain_names: list, nn_names: list, df, seq_len):
     """
-    用最新的数据检验模型。这些模型分为plain models（通常是树模型、SVM、LR等传统模型）和nn models（通常是神经网络模型）
+    用最新的数据检验模型，并综合这些模型形成Ensemble，以投票方式决定预测结果。
+    投票方式有两种：['soft', 'hard']。'soft'以预测可能性作为权重，'hard'则每个模型的权重一样。
+    这些模型分为plain models（通常是树模型、SVM、LR等传统模型）和nn models（通常是神经网络模型）
     输入为模型名字的列表。
     对于plain models，依次显示模型的name， params, test_report, score, features, feature_importances（如有）
         只有树状模型才显示feature_importance，目前只支持'XGBClassifier'和'RandomForestClassifier'
@@ -105,47 +132,70 @@ def eval_models(plain_names: list, nn_names: list, df):
                 1.具有以下methods: predict(X), predict_proba(X), score(X,y)
                 2.X是dataframe的单行。
             nn_names(list): A list of strs. 神经网络模型的名字。
-            df(DataFrame): 检验数据，含日期，需预处理好所有features和labels，输入的模型应基于这些features和labels训练。
+            df(DataFrame): 检验数据，含日期（date），需预处理好所有features和labels，输入的模型应基于这些features和labels训练。
+            seq_len(int): time steps的长度
+
         Returns:
-            history_result(DataFrame): 'date', 'actual', [每个model预测的'result', 'pred', 'actual', 'down_proba', 'up_proba']
+            history_result(DataFrame): 结构如下
+            'date'(index), 'hard_pred', 'soft_pred', 'actual',
+            [每个model预测的'result', 'pred', 'actual', 'down_proba', 'up_proba']
     """
     plain_result = eval_plain_models(plain_names, df)
     nn_models = JsonModel.load_nn_models(nn_names)  # return a dict(key: ModelAttr, value: model)
+    dates = df[df.date.isin(plain_result.date)].date.values  # dates on both plain models and nn models.
+    dates = dates[seq_len:]  # 前seq_len个样本用于预测
+    result = plain_result[plain_result.date.isin(dates)].copy()  # 只记录有预测的部分
+    logger.info(f"plain sample size: {len(plain_result)}")
+    logger.info(f"nn sample size: {len(result)}")
 
-    df = df[['date']]
     names = []
-    col_names = ['date']
     for attr, model in nn_models.items():
-        name = model.__class__.__name__
-        if name == 'Pipeline':
-            name = model.steps[-1][0]
-        logger.info(f"Model: {name}")
-        logger.info(model.get_params)
-        X = df[attr.features]
-        y = df[attr.labels].squeeze().to_numpy()
-        test_pred = model.predict(X)
-        model_score = model.score(X, y)
-        print(classification_report(y, test_pred))
-        logger.info(f"Test score is: {model_score}")
-        if name in ['XGBClassifier', 'RandomForestClassifier']:
-            logger.info("Feature importances")
-            for f_name, score in sorted(zip(TBOND_PARAM.TRAIN_FEATS, model.feature_importances_), key=lambda x: x[1],
-                                        reverse=True):
-                logger.info(f"{f_name}, {float(score):.2f}")
-        probs = model.predict_proba(X)
-        df.insert(len(df.columns), column=f'{name}_pred', value=test_pred)
-        df.insert(len(df.columns), column=f'{name}_actual', value=y)
-        df = df.copy()
-        df[name] = df.apply(lambda x: 'Right' if x[f'{name}_pred'] == x[f'{name}_actual'] else 'Wrong', axis=1)
-        df[f'{name}_down'], df[f'{name}_up'] = probs[:, 0], probs[:, 1]
+        name = attr.name
         names.append(name)
+        scaled_df, scale_stats = tbond_nn_predata.scale(df, attr.scaled_feats, attr.stats)
+        x = []
+        for today in dates:
+            x.append(tbond_nn_predata.gen_pred_x(scaled_df, today, attr.features, seq_len=seq_len))
+        x = np.array(x)
+        y = df[attr.labels].squeeze().to_numpy()
+        y = y[seq_len:]  # 与x对应，从第seq_len个日期开始预测
+        model_score = model.evaluate(x, y, verbose=0)
+        logger.info(f"Model: {name}  Accuracy is: {model_score[1]:.4f} Loss is: {model_score[0]:.4f}")
+        probs = model.predict(x).flatten()  # change shape: (n, 1) to shape(n,)
+        preds = (probs > 0.5).astype(int)  # change probability to direction. prob <= 0.5 is 0, > 0.5 is 1
+        result.insert(len(result.columns), column=f'{name}_pred', value=preds)
+        result.insert(len(result.columns), column=f'{name}_actual', value=y)
+        result[name] = result.apply(lambda x: 'Right' if x[f'{name}_pred'] == x[f'{name}_actual'] else 'Wrong', axis=1)
+        result[f'{name}_down'], result[f'{name}_up'] = 1 - probs, probs
+
+    #  Ensemble voting
+    result['hard_pred'] = result.apply(lambda row: vote(row, plain_names, nn_names, weight='hard'), axis=1)
+    result['soft_pred'] = result.apply(lambda row: vote(row, plain_names, nn_names, weight='soft'), axis=1)
+    result = result.set_index('date')
+    plain_result = plain_result.set_index('date')
+    result['actual'] = plain_result[plain_names[0] + '_actual']
+    result['hard'] = result.apply(lambda x: 'Right' if x.hard_pred == x.actual else 'Wrong', axis=1)
+    result['soft'] = result.apply(lambda x: 'Right' if x.soft_pred == x.actual else 'Wrong', axis=1)
+    hard_hit = result.apply(lambda x: 1 if x.hard_pred == x.actual else 0, axis=1).sum()
+    soft_hit = result.apply(lambda x: 1 if x.soft_pred == x.actual else 0, axis=1).sum()
+    hard_acc = hard_hit / len(result)
+    soft_acc = soft_hit / len(result)
+    logger.info(f"Hard Accuracy:{hard_acc:.4f}  Soft Accuracy:{soft_acc:.4f}")
+    #  Reorder the column names
+    col_names = plain_result.columns.tolist()
     for name in names:
         col_names.append(name)
         col_names.append(f'{name}_pred')
         col_names.append(f'{name}_actual')
         col_names.append(f'{name}_down')
         col_names.append(f'{name}_up')
-    history_result = df[col_names].copy()
+    col_names.insert(0, 'hard')
+    col_names.insert(1, 'soft')
+    col_names.insert(2, 'hard_pred')
+    col_names.insert(3, 'soft_pred')
+    col_names.insert(4, 'actual')
+    history_result = result[col_names].copy()
+
     history_result.loc['average'] = history_result.mean(numeric_only=True)
     return history_result
 
@@ -258,14 +308,14 @@ def main():
     xgb_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1454-v2016.pkl")
     # pol_model = joblib.load(f"models/0.626-1d_fwd-XGB-20210618-1454-v2016.pkl")
     plain_models = ['0.605-1d_fwd-RFC-20210619-1346-v2018.pkl', '0.626-1d_fwd-XGB-20210618-1454-v2016.pkl']
-
+    nn_models = ['Checkpoint-10-SEQ-1-PRED-20210903-1639.model']
     vote_model = EnsembleVoteClassifier(clfs=[xgb_model, rfc_model],
                                         weights=[1, 1], voting='soft', fit_base_estimators=False)
     vote_model.fit(val_X, val_y)
-    history_result = eval_plain_models(plain_models, test_df)
-    # history_result = val_models([xgb_model, rfc_model], test_df)
+    # history_result = val_models([vote_model, xgb_model, rfc_model], test_df)
+    history_result = eval_models(plain_models, nn_models, test_df, seq_len=10)
     pred_future([vote_model, xgb_model, rfc_model], sample_df, future_period=1, label_type='fwd')
-    history_result.to_csv(os.path.join(ROOT_PATH, 'history_result.csv'), index=False, encoding='utf-8')
+    history_result.to_csv(os.path.join(ROOT_PATH, 'history_result.csv'), index=True, encoding='utf-8')
 
 
 if __name__ == '__main__':
