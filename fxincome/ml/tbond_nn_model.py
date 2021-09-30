@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Disable Tensorflow messages < ERROR
 import datetime
 import joblib
 import matplotlib.pyplot as plt
@@ -29,6 +30,7 @@ def plot_graph(x_train, y_train, x_test, y_test, model):
     plt.title('test')
 
     plt.show()
+
 
 def train(train_x, train_y, val_x, val_y, test_x, test_y, model_name, batch_size=32, epochs=20):
     """
@@ -87,6 +89,7 @@ def train(train_x, train_y, val_x, val_y, test_x, test_y, model_name, batch_size
     print('Test loss:', score[0])
     print('Test accuracy:', score[1])
 
+
 def evaluate():
     """
     Use features_processed_latest.csv to evaluate the trained models
@@ -101,7 +104,8 @@ def evaluate():
     stats = joblib.load(stats_name)
     df = pd.read_csv(os.path.join(ROOT_PATH, src_file), parse_dates=['date'])
     df = tbond_nn_predata.feature_engineering(df, TBOND_PARAM.ALL_FEATS, future_period=1, label_type='fwd')
-    train_df, val_df, test_df, train_stats = tbond_nn_predata.pre_process(df, TBOND_PARAM.SCALED_FEATS, scale_type='zscore')
+    train_df, val_df, test_df, train_stats = tbond_nn_predata.pre_process(df, TBOND_PARAM.SCALED_FEATS,
+                                                                          scale_type='zscore')
     logger.info(f"stats equal? {train_stats == stats}")
 
     src_file = 'fxincome_features_latest.csv'
@@ -116,11 +120,11 @@ def evaluate():
     train_x, train_y = tbond_nn_predata.gen_trainset(train_df, data_columns, TBOND_PARAM.FEAT_OUTLINERS,
                                                      seq_len=x_days, balance=False)
     val_x, val_y = tbond_nn_predata.gen_trainset(val_df, data_columns, TBOND_PARAM.FEAT_OUTLINERS,
-                                                     seq_len=x_days, balance=False)
+                                                 seq_len=x_days, balance=False)
     test_x, test_y = tbond_nn_predata.gen_trainset(test_df, data_columns, TBOND_PARAM.FEAT_OUTLINERS,
-                                                     seq_len=x_days, balance=False)
-    latest_x, latest_y = tbond_nn_predata.gen_trainset(latest_df, data_columns, TBOND_PARAM.FEAT_OUTLINERS,
                                                    seq_len=x_days, balance=False)
+    latest_x, latest_y = tbond_nn_predata.gen_trainset(latest_df, data_columns, TBOND_PARAM.FEAT_OUTLINERS,
+                                                       seq_len=x_days, balance=False)
 
     plot_graph(train_x, train_y, test_x, test_y, model=best_model)
 
@@ -135,13 +139,6 @@ def evaluate():
     score = best_model.evaluate(latest_x, latest_y, verbose=0)
     logger.info(f'Best model for latest samples accuracy:{score[1]:.4f}, loss:{score[0]:.4f}')
 
-    latest_x = tbond_nn_predata.gen_pred_x(latest_df, datetime.datetime(2021, 4, 12), TBOND_PARAM.NN_TRAIN_FEATS,
-                                           seq_len=x_days)
-
-    preds = best_model.predict(latest_x)
-    logger.info(f"X Shape: {latest_x.shape} Prediction Shape: {preds.shape}")
-    for pred in preds:
-        logger.info(f"pred[0]: {pred[0]}")
 
 def main():
     x_days = 10  # 用过去10天的x数据
@@ -166,6 +163,7 @@ def main():
                                                    seq_len=x_days, balance=False)
     train(train_x, train_y, val_x, val_y, test_x, test_y, MODEL_NAME, BATCH_SIZE, EPOCHS)
     joblib.dump(stats, f"models/stats-{MODEL_NAME}.pkl")
+
 
 if __name__ == '__main__':
     # physical_devices = tf.config.list_physical_devices('GPU')

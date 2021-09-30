@@ -3,10 +3,8 @@ import os
 import random
 import datetime
 from collections import deque
-
 import numpy as np
 import pandas as pd
-
 import fxincome.ml.tbond_process_data
 from fxincome import logger
 from fxincome.const import TBOND_PARAM
@@ -256,7 +254,7 @@ def gen_pred_x(df, today, columns: list, seq_len=10):
             columns(List): 字符串列表，待处理的features。
             seq_len(int): time steps的长度
         Returns:
-            X(ndarray): 转换后，适合输入到RNN网络的numpy ndarray X[1, time steps, feature dimensions]
+            X(ndarray): 2D numpy ndarray [time steps, feature dimensions]
     """
 
     df = df.dropna()  # cleanup again
