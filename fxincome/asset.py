@@ -9,7 +9,7 @@ from dateutil.relativedelta import relativedelta
 
 class Bond:
     def __init__(self, code, initial_date, end_date, issue_price, coupon_rate, coupon_type, coupon_frequency,
-                 coupon_period=None):
+                 coupon_period=None,bond_name=None,bond_type=None):
         self.code = code
         self.initial_date = initial_date
         self.end_date = end_date
@@ -20,6 +20,8 @@ class Bond:
         self.coupon_frequency = coupon_frequency
         self.coupon_period = coupon_period if coupon_period else end_date.year - initial_date.year  # 债券期限（年），如果是整年的债券就可以不输入coupon_period,非整年的就要输入
         self._cashflow_df = self.cal_cashflow()
+        self.bond_name=bond_name
+        self.bond_type=bond_type
 
     def get_dailycoupon(self, date):
         cashflow_df = self.get_cashflow(date, 'Undelivered_Lastone')
@@ -331,35 +333,45 @@ class Bond:
         ytm = self.curve_to_ytm(date, curve_df)
         duration = self.ytm_to_duration(date, ytm, DURARION_TYPE)
         return duration
-
+def produce_standard_bond(date, year,coupon_rate, issue_price=100, coupon_type='附息', coupon_frequency=1):
+    code='{}-{}'.format(datetime.datetime.strftime(date,'%Y%m%d'),year)
+    initial_date=date
+    end_date=date+ relativedelta(years=year)
+    standard_bond=Bond(code, initial_date, end_date, issue_price, coupon_rate, coupon_type, coupon_frequency)
+    return standard_bond
 
 if __name__ == '__main__':
-    code = '200016'
-    initial_date = datetime.datetime(2020, 11, 19)
-    end_date = datetime.datetime(2030, 11, 19)
-    issue_price = 100
-    coupon_rate = 3.27
-    coupon_type = '附息'
-    coupon_frequency = 2
-    a = Bond(code, initial_date, end_date, issue_price, coupon_rate, coupon_type, coupon_frequency)
-    date = datetime.datetime(2021, 5, 12)
-    ytm = 3.1450
-    dirtyprice = 102.5927
-    cleanprice = 101.0210
-    print(a.accrued_interest(date))
+    # code = '219915'
+    # initial_date = datetime.datetime(2021, 4, 6)
+    # end_date = datetime.datetime(2021, 10, 5)
+    # issue_price = 98.9240
+    # coupon_rate = 3.27
+    # coupon_type = '贴现'
+    # coupon_frequency = 0
+    # a = Bond(code, initial_date, end_date, issue_price, coupon_rate, coupon_type, coupon_frequency)
+    # date = datetime.datetime(2021, 9, 30)
+    # cleanprice = 98.9620
+    # print(a.cleanprice_to_ytm(date,cleanprice))
+    date=datetime.datetime(2021,12,21)
+    year=1
+    coupon_rate = 2.5
+    bond=produce_standard_bond(date,year,coupon_rate, coupon_type='到期一次还本付息', coupon_frequency=1)
+    print(bond.get_cashflow(date))
 
-    print(a.ytm_to_dirtyprice(date, ytm))
-    print(a.ytm_to_cleanprice(date, ytm))
-
-    print(a.dirtyprice_to_ytm(date, dirtyprice))
-    print(a.dirtyprice_to_cleanprice(date, dirtyprice))  ###
-
-    print(a.cleanprice_to_ytm(date, cleanprice))
-    print(a.cleanprice_to_dirtyprice(date, cleanprice))
-
-    # x=pd.DataFrame([[1],[2]],columns=['123'])
-    # x['111']=[1,2]
+    # print(a.accrued_interest(date))
+    #
+    # print(a.ytm_to_dirtyprice(date, ytm))
+    # print(a.ytm_to_cleanprice(date, ytm))
+    #
+    # print(a.dirtyprice_to_ytm(date, dirtyprice))
+    # print(a.dirtyprice_to_cleanprice(date, dirtyprice))  ###
+    #
+    # print(a.cleanprice_to_ytm(date, cleanprice))
+    # print(a.cleanprice_to_dirtyprice(date, cleanprice))
+    #
+    # # x=pd.DataFrame([[1],[2]],columns=['123'])
+    # # x['111']=[1,2]
+    # # print(x)
+    # x = pd.DataFrame([], columns=['1', '2'])
+    # x = x.append([1, 2])
     # print(x)
-    x = pd.DataFrame([], columns=['1', '2'])
-    x = x.append([1, 2])
-    print(x)

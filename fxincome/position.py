@@ -120,17 +120,9 @@ class Position_Bond:
     def move_ytm(self, newdate, ytm=None, quantity_delta=None):
         if self.__date >= newdate:
             raise ValueError(f"move_ytm() cannot move backward. (id: {str(self.pid)} )")
+        #这里不用elif是有原因的，千万不能改
         if self.quantity < 0:
             return
-        if self.quantity == 0:
-            last_df = self.gain.iloc[-1:, ].copy()
-            if last_df.date.iat[0] != newdate:
-                last_df.date.iat[0] = newdate
-                last_df.loc[last_df.index[0], ['market_cleanprice', 'market_dirtyprice']] = 0
-                last_df.market_ytm.iat[0] = np.nan
-                self.gain = self.gain.append([last_df], ignore_index=True, sort=False)
-                self.__date = newdate
-
         if self.quantity > 0:
             while (self.__date < newdate) and (self.__date < self.bond.end_date):
                 self.__date += datetime.timedelta(days=1)
@@ -218,6 +210,20 @@ class Position_Bond:
             self.gain['price_gain_sum'] = self.gain['price_gain'].fillna(0).cumsum()
             self.gain['gain_sum'] = self.gain['interest_sum'] + self.gain[
                 'price_gain_sum'] + self.gain['float_gain_sum']
+        if self.quantity == 0:
+            last_df = self.gain.iloc[-1:, ].copy()
+            if last_df.date.iat[0] != newdate:
+                last_df.date.iat[0] = newdate
+                last_df.loc[last_df.index[0], ['market_cleanprice', 'market_dirtyprice']] = 0
+                last_df.market_ytm.iat[0] = np.nan
+                self.gain = self.gain.append([last_df], ignore_index=True, sort=False)
+                self.__date = newdate
+    def reinvest(self,reinvest_rate):
+        self.gain['reinvest_interest']=self.gain.apply(lambda x:(x['date']-self.bond.end_date).days/365
+                                                                *reinvest_rate*self.begin_quantity if x['date']>self.bond.end_date else np.nan,axis=1)
+
+        self.gain['gain_sum']=self.gain.apply(lambda x:x['gain_sum']+x['reinvest_interest'] if pd.notnull(x['reinvest_interest']) else x['gain_sum'],axis=1 )
+
 
 
 if __name__ == '__main__':
