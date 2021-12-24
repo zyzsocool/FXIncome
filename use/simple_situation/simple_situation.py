@@ -58,9 +58,9 @@ with tqdm(total=all_size) as step:
                 show['pips']=pips
                 show['maturity']=round((position_i.bond.end_date - base_date).days / 365, 2)
                 show['value']=position_i.begin_quantity*position_i.begin_dirtyprice/100
-                result_list.append(show[['code','date','pips','gain_sum','maturity','value']])
+                result_list.append(show[['code','date','pips','gain_sum','maturity','value','reinvest_interest','interest_sum','price_gain_sum','float_gain_sum']])
 result_df=pd.concat(result_list,ignore_index=True)
-# print(result_df)
+result_df['days']=result_df['date'].apply(lambda x:'T+{}'.format((x - base_date).days))
 agg_df=result_df.groupby(['pips','date'])\
     .apply(lambda x:pd.Series({
     'IRR':x['gain_sum'].sum()/x['value'].sum(),
@@ -79,7 +79,10 @@ wirter=pd.ExcelWriter(address)
 parameter=parameter.reset_index()[['参数','数值']]
 parameter=parameter.iloc[:4,:]
 
+result_df['reinvest_interest']=result_df['reinvest_interest'].fillna(0)
+result_df=result_df[['code','pips','days','gain_sum','interest_sum','float_gain_sum','price_gain_sum','reinvest_interest']]
 parameter.to_excel(wirter,sheet_name='parameter',index=False)
 bond.to_excel(wirter,sheet_name='holding',index=False)
 pivot_df.to_excel(wirter,sheet_name='result')
+result_df.to_excel(wirter,sheet_name='detail')
 wirter.save()
