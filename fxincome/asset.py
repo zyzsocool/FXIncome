@@ -107,7 +107,7 @@ class Bond:
         cashflow_df = self.get_cashflow(date, 'Undelivered_Lastone')
         if cashflow_df.shape[0] <= 1:
             if cashflow_df.iat[0, 0] == date:  # 1刚好在到期日这天
-                dirtyprice = 100
+                dirtyprice = self.issue_price
                 return dirtyprice
             else:  # 2晚于到期日
                 raise Exception('The bond is due' + '(' + self.code + ')')
