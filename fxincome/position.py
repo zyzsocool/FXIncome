@@ -7,6 +7,9 @@ from fxincome.const import ACCOUNT_TYPE
 from dateutil.relativedelta import relativedelta
 
 from fxincome.asset import Bond
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', None)
+# pd.set_option('display.max_rows', None)
 
 """
 Position_Bond，处理交易，逐日盯市，计算和记录损益、DV01、Duration
@@ -57,7 +60,7 @@ class Position_Bond:
 
         self.cashflow_history_df = pd.DataFrame([[begin_date, -begin_quantity * self.begin_dirtyprice / 100]],
                                                 columns=['date', 'cash'])
-        self.gain = pd.DataFrame([], columns=['date', 'quantity', 'market_cleanprice', 'market_dirtyprice',
+        self.position_gain_df = pd.DataFrame([], columns=['date', 'quantity', 'market_cleanprice', 'market_dirtyprice',
                                               'market_ytm', 'cost_cleanprice', 'coupon', 'interest',
                                               'price_gain', 'coupon_sum', 'interest_sum', 'price_gain_sum',
                                               'float_gain_sum', 'gain_sum', 'dv01', 'duration'])
@@ -99,7 +102,7 @@ class Position_Bond:
             raise NotImplementedError("Unknown CASHFLOW_TYPE")
 
     def get_position_gain(self):
-        position_gain_df = self.gain
+        position_gain_df = self.position_gain_df
         return position_gain_df
 
     def move_curve(self, newdate, curve_df=None, quantity_delta=None):
@@ -120,6 +123,9 @@ class Position_Bond:
     def move_ytm(self, newdate, ytm=None, quantity_delta=None):
         if self.__date >= newdate:
             raise ValueError(f"move_ytm() cannot move backward. (id: {str(self.pid)} )")
+        if quantity_delta:
+            if (quantity_delta<0)&(not ytm):
+                raise ValueError(f"no ytm to sell. (id: {str(self.pid)} )")
         #这里不用elif是有原因的，千万不能改
         if self.quantity < 0:
             return
@@ -127,37 +133,37 @@ class Position_Bond:
             while (self.__date < newdate) and (self.__date < self.bond.end_date):
                 self.__date += datetime.timedelta(days=1)
                 # 算现金流
-                if (self.__date in list(self.bond._cashflow_df['date'])) and (not self.gain.empty):
+                if (self.__date in list(self.bond._cashflow_df['date'])) and (not self.position_gain_df.empty):
                     cash = self.bond._cashflow_df[self.bond._cashflow_df['date'] == self.__date].cash.iat[0] # 债券有新的现金流
-                    cash = cash * self.gain.quantity.iat[-1] / 100  ## 乘以最新的quantity
+                    cash = cash * self.position_gain_df.quantity.iat[-1] / 100  ## 乘以最新的quantity
                     self.cashflow_history_df = self.cashflow_history_df.append([{'date': self.__date, 'cash': cash}],
                                                                                ignore_index=True, sort=False)
                 # 算收益
                 coupon = self.bond.get_dailycoupon(self.__date) * self.quantity / 100
 
                 if self.account_type == ACCOUNT_TYPE.TPL:
-                    self.gain = self.gain.append([{'date': self.__date,
+                    self.position_gain_df = self.position_gain_df.append([{'date': self.__date,
                                                    'quantity': self.quantity,
                                                    'coupon': coupon,
                                                    'interest': coupon,
                                                    'cost_cleanprice': self.begin_cleanprice}],
-                                                    ignore_index=True, sort=False)
+                                                                         ignore_index=True, sort=False)
 
                 elif self.account_type in [ACCOUNT_TYPE.OCI, ACCOUNT_TYPE.AC]:
 
-                    if self.gain.empty:
+                    if self.position_gain_df.empty:
                         cost_cleanprice=self.begin_cleanprice
                     else:
-                        cost_cleanprice=self.gain.cost_cleanprice.iat[-1]* (1 + self.real_daily_rate / 100) - self.bond.get_dailycoupon(
+                        cost_cleanprice= self.position_gain_df.cost_cleanprice.iat[-1] * (1 + self.real_daily_rate / 100) - self.bond.get_dailycoupon(
                             self.__date+datetime.timedelta(days=-1))
                     interest = cost_cleanprice * self.real_daily_rate / 100 * self.quantity / 100 if coupon != 0 else 0
 
-                    self.gain = self.gain.append([{'date': self.__date,
+                    self.position_gain_df = self.position_gain_df.append([{'date': self.__date,
                                                    'quantity': self.quantity,
                                                    'coupon': coupon,
                                                    'interest': interest,
                                                    'cost_cleanprice': cost_cleanprice}],
-                                                   ignore_index=True, sort=False)
+                                                                         ignore_index=True, sort=False)
                     pass
                 else:
                     raise NotImplementedError("Unknown ACCOUNT_TYPE")
@@ -166,14 +172,14 @@ class Position_Bond:
                 ytm = np.nan
                 quantity_delta = -self.quantity
             if ytm:
-                self.gain.market_cleanprice.iat[-1] = self.bond.ytm_to_cleanprice(self.__date, ytm)
-                self.gain.market_dirtyprice.iat[-1] = self.bond.ytm_to_dirtyprice(self.__date, ytm)
-                self.gain.market_ytm.iat[-1] = ytm
-                self.gain.float_gain_sum.iat[-1] = (self.gain.market_cleanprice.iat[-1] -
-                                                    self.gain.cost_cleanprice.iat[-1]) * self.quantity / 100
+                self.position_gain_df.market_cleanprice.iat[-1] = self.bond.ytm_to_cleanprice(self.__date, ytm)
+                self.position_gain_df.market_dirtyprice.iat[-1] = self.bond.ytm_to_dirtyprice(self.__date, ytm)
+                self.position_gain_df.market_ytm.iat[-1] = ytm
+                self.position_gain_df.float_gain_sum.iat[-1] = (self.position_gain_df.market_cleanprice.iat[-1] -
+                                                                self.position_gain_df.cost_cleanprice.iat[-1]) * self.quantity / 100
 
-                self.gain.dv01.iat[-1] = self.bond.ytm_to_dv01(self.__date, ytm) * self.quantity / 100
-                self.gain.duration.iat[-1] = self.bond.ytm_to_duration(self.__date, ytm, 'Modified')
+                self.position_gain_df.dv01.iat[-1] = self.bond.ytm_to_dv01(self.__date, ytm) * self.quantity / 100
+                self.position_gain_df.duration.iat[-1] = self.bond.ytm_to_duration(self.__date, ytm, 'Modified')
 
             # 卖出债券
             if quantity_delta:
@@ -184,54 +190,69 @@ class Position_Bond:
                 if self.quantity < 0:
                     raise ValueError(f"Not Enough Bond to Sell (id: {str(self.pid)}")
                 if self.__date == self.cashflow_history_df.iloc[-1, 0]:
-                    self.cashflow_history_df.iloc[-1, 1] += -self.gain.market_dirtyprice.iat[-1]\
+                    self.cashflow_history_df.iloc[-1, 1] += -self.position_gain_df.market_dirtyprice.iat[-1]\
                                                             * quantity_delta / 100 \
                                                             * (self.__date != self.bond._cashflow_df.iloc[-1, 0])
                 else:
                     self.cashflow_history_df = self.cashflow_history_df.append(
-                        [{'date': self.__date, 'cash': -self.gain.iloc[-1, 3] * quantity_delta / 100}],
+                        [{'date': self.__date, 'cash': -self.position_gain_df.iloc[-1, 3] * quantity_delta / 100}],
                         ignore_index=True, sort=False)
-                self.gain.quantity.iat[-1] = self.quantity
-                self.gain.coupon.iat[-1] = self.gain.coupon.iat[-1] / old_quantity * self.quantity
-                self.gain.interest.iat[-1] = self.gain.interest.iat[-1] / old_quantity * self.quantity
+                self.position_gain_df.quantity.iat[-1] = self.quantity
+                self.position_gain_df.coupon.iat[-1] = self.position_gain_df.coupon.iat[-1] / old_quantity * self.quantity
+                self.position_gain_df.interest.iat[-1] = self.position_gain_df.interest.iat[-1] / old_quantity * self.quantity
                 # 由于当日卖出债券，计算价差时，卖出部分的债券的cost_cleanprice应取上一日
-                self.gain.price_gain.iat[-1] = (self.gain.market_cleanprice.iat[-1]
-                                                - self.gain.cost_cleanprice.iat[-1]) \
-                                               * (-quantity_delta) / 100
-                self.gain.float_gain_sum.iat[-1] = (self.gain.market_cleanprice.iat[-1]
-                                                    - self.gain.cost_cleanprice.iat[-1]) \
-                                                   * self.quantity / 100
-                self.gain.dv01.iat[-1] = self.bond.ytm_to_dv01(self.__date, ytm) * self.quantity / 100
+                self.position_gain_df.price_gain.iat[-1] = (self.position_gain_df.market_cleanprice.iat[-1]
+                                                            - self.position_gain_df.cost_cleanprice.iat[-1]) \
+                                                           * (-quantity_delta) / 100
+                self.position_gain_df.float_gain_sum.iat[-1] = (self.position_gain_df.market_cleanprice.iat[-1]
+                                                                - self.position_gain_df.cost_cleanprice.iat[-1]) \
+                                                               * self.quantity / 100
+                self.position_gain_df.dv01.iat[-1] = self.bond.ytm_to_dv01(self.__date, ytm) * self.quantity / 100
                 # self.gain.iloc[-1, 14] =0
                 # self.gain.iloc[-1, 15] = 0
 
-            self.gain['coupon_sum'] = self.gain['coupon'].cumsum()
-            self.gain['interest_sum'] = self.gain['interest'].cumsum()
-            self.gain['price_gain_sum'] = self.gain['price_gain'].fillna(0).cumsum()
-            self.gain['gain_sum'] = self.gain['interest_sum'] + self.gain[
-                'price_gain_sum'] + self.gain['float_gain_sum']
+            self.position_gain_df['coupon_sum'] = self.position_gain_df['coupon'].cumsum()
+            self.position_gain_df['interest_sum'] = self.position_gain_df['interest'].cumsum()
+            self.position_gain_df['price_gain_sum'] = self.position_gain_df['price_gain'].fillna(0).cumsum()
+            self.position_gain_df['gain_sum'] = self.position_gain_df['interest_sum'] + self.position_gain_df[
+                'price_gain_sum'] + self.position_gain_df['float_gain_sum']
         if self.quantity == 0:
-            last_df = self.gain.iloc[-1:, ].copy()
+
+            last_df = self.position_gain_df.iloc[-1:, ].copy()
+            if last_df.empty:
+                return
             if last_df.date.iat[0] != newdate:
                 last_df.date.iat[0] = newdate
                 last_df.loc[last_df.index[0], ['market_cleanprice', 'market_dirtyprice']] = 0
                 last_df.market_ytm.iat[0] = np.nan
-                self.gain = self.gain.append([last_df], ignore_index=True, sort=False)
+                self.position_gain_df = self.position_gain_df.append([last_df], ignore_index=True, sort=False)
                 self.__date = newdate
     def reinvest(self,reinvest_rate):
-        self.gain['reinvest_interest']=self.gain.apply(lambda x:(x['date']-self.bond.end_date).days/365
-                                                                *reinvest_rate*self.begin_quantity if x['date']>self.bond.end_date else np.nan,axis=1)
+        if self.position_gain_df.empty==False:
+            self.position_gain_df['reinvest_interest']=self.position_gain_df.apply(lambda x: (x['date'] - self.bond.end_date).days / 365
+                                                                                             * reinvest_rate * self.begin_quantity if x['date']>self.bond.end_date else np.nan, axis=1)
 
-        self.gain['gain_sum']=self.gain.apply(lambda x:x['gain_sum']+x['reinvest_interest'] if pd.notnull(x['reinvest_interest']) else x['gain_sum'],axis=1 )
+            self.position_gain_df['gain_sum']=self.position_gain_df.apply(lambda x: x['gain_sum'] + x['reinvest_interest'] if pd.notnull(x['reinvest_interest']) else x['gain_sum'], axis=1)
 
 
 
 if __name__ == '__main__':
-    code = '200016'
-    initial_date = datetime.datetime(2020, 11, 19)
-    end_date = datetime.datetime(2030, 11, 19)
-    issue_price = 100
-    coupon_rate = 3.27
-    coupon_type = '附息'
-    coupon_frequency = 2
+    code = '219950'
+    initial_date = datetime.datetime(2021, 10, 25)
+    end_date = datetime.datetime(2022, 4, 25)
+    issue_price = 98.9220
+    coupon_rate = 2.1859
+    coupon_type = '贴现'
+    coupon_frequency = 0
     a = Bond(code, initial_date, end_date, issue_price, coupon_rate, coupon_type, coupon_frequency)
+    begin_cleanprice=a.ytm_to_cleanprice(datetime.datetime(2021,12,23),2.3533)
+    position=Position_Bond(pid='001', bond=a, account_type='OCI', begin_quantity=0, begin_date=datetime.datetime(2021,12,23), begin_cleanprice=begin_cleanprice)
+
+    position.move_ytm(datetime.datetime(2022,12,11),ytm=1.3)
+
+    print(position.get_position_gain())
+    print(position.get_cashflow('All'))
+
+    date=datetime.datetime(2022, 4, 25)
+    print(a.ytm_to_cleanprice(date,2.3533))
+    print(a.ytm_to_dirtyprice(date,2.3533))
