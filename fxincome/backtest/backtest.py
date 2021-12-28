@@ -1,6 +1,6 @@
 # -*- coding: utf-8; py-indent-offset:4 -*-
 
-from datetime import timedelta
+import datetime
 import math
 import backtrader as bt
 import pandas as pd
@@ -75,7 +75,8 @@ class PredictStrategy(bt.Strategy):
         if len(preds) == 0:  # Do nothing if no prediction
             return
         else:
-            pred = int(preds.EnsembleVoteClassifier_pred.iat[0])  # get EnsembleVoteClassifier's prediction
+            pred = int(preds.soft_pred.iat[0])  # get Ensemble Soft Voter's prediction
+
         # valid until the t+2 bar's next()
         valid_day = self.getdatabyname(self.tb_name).datetime.datetime(1)
 
@@ -131,6 +132,22 @@ class PredictStrategy(bt.Strategy):
         """
         return 10
 
+    def __buy_kelly(self, price):
+        """
+         用剩余现金 * kelly_ratio 买入债券。
+              Args:
+                  price(float): 单价
+              Returns:
+                 size(int): 应买入的数量，大于或等于 0
+         """
+        kelly_ratio = 0.43
+        cash = self.broker.get_cash()
+        if cash <= 0:
+            return 0
+        else:
+            size = cash * kelly_ratio / price
+            return math.floor(size)
+
     def __buy_all(self, price):
         """
         用所有现金买入。
@@ -155,7 +172,7 @@ def main():
     cerebro.addstrategy(PredictStrategy)
 
     price_df = pd.read_csv('d:/ProjectRicequant/fxincome/fxincome_features_latest.csv', parse_dates=['date'])
-    # price_df = price_df[price_df['date'] < datetime.datetime(2021, 4, 15)]
+    price_df = price_df[price_df['date'] > datetime.datetime(2021, 4, 9)]
 
     # Pass it to the backtrader datafeed and add it to the cerebro
     data1 = TBondData(dataname=price_df, nocase=True)
