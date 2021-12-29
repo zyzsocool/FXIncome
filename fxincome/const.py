@@ -139,17 +139,50 @@ class TBOND_PARAM:
         # 原始features
         'close',  # 收盘ytm
         'amount',  # 成交额，单位是元
-        # 'fr007',  # 7天回购定盘利率
+        'fr007',  # 7天回购定盘利率
         't10y',  # 10年国债中债估值ytm
         # 'fr007_1y',  # 1年期 fr007 IRS CFETS收盘利率
         'fr007_5y',  # 5年期 fr007 IRS CFETS收盘利率
-        # 'usdcny',  # 美元兑人民币汇率
+        'usdcny',  # 美元兑人民币汇率
         # 收盘ytm变种
         'pct_chg',
         # 'avg_chg_5',
-        'avg_chg_10',
+        # 'avg_chg_10',
         # 'avg_chg_20',
-        # 'volaty',  # (ytm(low price)  - ytm(high price)) / ytm(close)
+        'volaty',  # (ytm(low price)  - ytm(high price)) / ytm(close)
+        # 流动性指标变种
+        # 'fr007_chg_5',  # fr007 定盘利率 前5天均值变化率
+        # 'fr007_1y_chg_5',  # 1年期 fr007 IRS CFETS收盘利率 前5天均值变化率
+        # 其他指标变种
+        # 't10y_chg_5',
+        # 收盘ytm与其他各种指标之间的差值
+        'spread_t1y',
+        'spread_t10y',
+        'spread_fr007',
+        'spread_fr007_1y',
+        'spread_fr007_5y',
+        'spread_usdcny',
+        # 其他各种指标之间的差值
+        # 'spread_fr007_5y_fr007_1y',  # 5年IRS - 1年IRS
+        # 汇率变种
+        # 'usdcny_chg_5',
+    ]
+
+    SCALED_FEATS = [
+        # 原始features
+        'close',  # 收盘ytm
+        'amount',  # 成交额，单位是元
+        'fr007',  # 7天回购定盘利率
+        't10y',  # 10年国债中债估值ytm
+        # 'fr007_1y',  # 1年期 fr007 IRS CFETS收盘利率
+        'fr007_5y',  # 5年期 fr007 IRS CFETS收盘利率
+        'usdcny',  # 美元兑人民币汇率
+        # 收盘ytm变种
+        'pct_chg',
+        # 'avg_chg_5',
+        # 'avg_chg_10',
+        # 'avg_chg_20',
+        'volaty',  # (ytm(low price)  - ytm(high price)) / ytm(close)
         # 流动性指标变种
         # 'fr007_chg_5',  # fr007 定盘利率 前5天均值变化率
         # 'fr007_1y_chg_5',  # 1年期 fr007 IRS CFETS收盘利率 前5天均值变化率
@@ -166,35 +199,6 @@ class TBOND_PARAM:
         # 'spread_fr007_5y_fr007_1y',  # 5年IRS - 1年IRS
         # 汇率变种
         # 'usdcny_chg_5',
-    ]
-
-    SCALED_FEATS = [
-        # 原始features
-        'close',  # 收盘ytm
-        'amount',  # 成交额，单位是元
-        # 'fr007',  # 7天回购定盘利率
-        't10y',  # 10年国债中债估值ytm
-        # 'fr007_1y',  # 1年期 fr007 IRS CFETS收盘利率
-        'fr007_5y',  # 5年期 fr007 IRS CFETS收盘利率
-        # 'usdcny',  # 美元兑人民币汇率
-        # 收盘ytm变种
-        # 'pct_chg',
-        # 'avg_chg_5',
-        # 'avg_chg_10',
-        # 'avg_chg_20',
-        # 'volaty',  # (ytm(low price)  - ytm(high price)) / ytm(close)
-        # 流动性指标变种
-        # 'fr007_chg_5',  # fr007 定盘利率 前5天均值变化率
-        # 'fr007_1y_chg_5',  # 1年期 fr007 IRS CFETS收盘利率 前5天均值变化率
-        # 其他指标变种
-        # 't10y_chg_5',
-        # 收盘ytm与其他各种指标之间的差值
-        # 'spread_t1y',
-        # 'spread_t10y',
-        # 'spread_fr007',
-        # 'spread_fr007_1y',
-        # 'spread_fr007_5y',
-        'spread_usdcny',
     ]
 
     FEAT_OUTLINERS = [

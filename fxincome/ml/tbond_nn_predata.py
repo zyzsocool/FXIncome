@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 import os
 import random
-import datetime
 from collections import deque
+
 import numpy as np
 import pandas as pd
+
 import fxincome.ml.tbond_process_data
 from fxincome import logger
 from fxincome.const import TBOND_PARAM
@@ -12,6 +13,7 @@ from fxincome.const import TBOND_PARAM
 """
     为训练神经网络做数据预处理
 """
+
 
 def feature_engineering(df, select_features, future_period, label_type='fwd', dropna=True):
     """
@@ -73,10 +75,9 @@ def feature_engineering(df, select_features, future_period, label_type='fwd', dr
     return df
 
 
-def pre_process(df, scaled_features, percentile=0.10, scale_type='zscore'):
+def pre_process(df, scaled_features, percentile=0.10, scale='zscore'):
     """
-    原始features做特征工程之后，为训练模型做准备。
-    样本分成训练集、验证集和测试集，然后做scaling。
+    原始features做特征工程之后，样本分成训练集、验证集和测试集，然后做scaling
     划分数据集方法：按日期顺序划分，从早到晚依次为test,val，test。
                  设percentile为x，则 test = 1 - 2*x, val = x, test = x
 
@@ -85,20 +86,18 @@ def pre_process(df, scaled_features, percentile=0.10, scale_type='zscore'):
             df(DataFrame): 待处理的dataframe，含labels
             scaled_features(List): 字符串列表。需要做scaling的features。
             percentile(float):  划分比例，test = 1 - 2*x, val = x, test = x
-            scale_type('minmax', 'zscore'): 采用什么归一化方法，可选min-max和 z score，默认为z score
+            scale('minmax', 'zscore'): 采用什么归一化方法，可选min-max和 z score，默认为z score
         Returns:
             train_df(DataFrame)
             val_df(DataFrame)
             test_df(DataFrame)
-            train_stats(Dict): 训练集做Scaling的统计特征，数据结构为Dict of Dict
-                            对于zscore， {feature1: {mean: float, std: float}, feature2: ...}
-                            对于minmax， {feature1: {min: float, max: float}, feature2: ...}
     """
-    logger.info(f"Before pre_data() splitting, sample size is {len(df)}")
+    logger.info(f"Before pre_data(), sample size is {len(df)}")
     # SCALED_FEATURES不能为空
     df = df.dropna(subset=TBOND_PARAM.SCALED_FEATS)
     df = df.sort_values('date', ascending=True)
     dates = sorted(df.date.values)
+    logger.info(f"After pre_data(), sample size is {len(df)}")
 
     test_date = dates[-int(percentile * len(dates))]
     val_date = dates[-int(2 * percentile * len(dates))]
@@ -106,73 +105,32 @@ def pre_process(df, scaled_features, percentile=0.10, scale_type='zscore'):
     test_df = df.query('date >= @test_date').copy()
     val_df = df.query('date >= @val_date & date < @test_date').copy()
     train_df = df.query('date < @val_date').copy()
-    logger.info(f"After pre_data() splitting, sample size is {len(train_df)+len(test_df)+len(val_df)}")
-    logger.info(f"train size is {len(train_df)} val size is {len(val_df)}  test size is {len(test_df)}")
 
-    train_df, train_stats = scale(train_df, scaled_features, type=scale_type)
-    val_df, stats = scale(val_df, scaled_features, stats=train_stats, type=scale_type)
-    test_df, stats = scale(test_df, scaled_features, stats=train_stats, type=scale_type)
-
-    return train_df, val_df, test_df, train_stats
-
-
-def scale(df, features, stats=None, type='zscore'):
-    """
-    针对scaled_features做scale
-        Args:
-            df(DataFrame): 待处理的dataframe，只对里面的features做scale
-            features(List): 字符串列表。需要做scaling的features。
-            stats(Dict):    Scaling的统计特征，数据结构为Dict of Dict
-                            对于zscore， {feature1: {mean: float, std: float}, feature2: ...}
-                            对于minmax， {feature1: {min: float, max: float}, feature2: ...}
-                            默认为None，即未训练，需要由本mehtod生成统计特征。
-                            若不为None，即已训练，需要用stats里的统计特征。
-            type('minmax', 'zscore'): 采用什么归一化方法，可选min-max和 z score，默认为z score
-        Returns:
-            df(DataFrame)
-            stats(Dict): 训练集做Scaling的统计特征，数据结构为Dict of Dict
-                         对于zscore， {feature1: {mean: float, std: float}, feature2: ...}
-                         对于minmax， {feature1: {min: float, max: float}, feature2: ...}
-    """
-
-    if stats:   # 已经训练好模型，必须用模型的统计要素
-        trained = True
-        if stats['type'] != type:
-            raise ValueError(f"stats type({stats['type']}) != input scale type(type)")
-    else:  # 未训练模型，需要自行生成train set的统计要素
-        trained = False
-        stats = {'type': type}
-    for feature in features:
+    for feature in scaled_features:
         # Default scaling method.
         # Use the std and mean of the train set to scale the val set and test set.
-        if type == 'zscore':
-            if trained:  # 已经训练好模型，必须用模型的统计要素
-                std = stats[feature]['std']
-                mean = stats[feature]['mean']
-            else:  # 未训练模型，需要自行生成train set的统计要素
-                std = df[feature].std()
-                mean = df[feature].mean()
-                stats[feature] = {'mean': mean, 'std': std}
-            df[feature] = (df[feature] - mean) / std
-
+        if scale == 'zscore':
+            train_std = train_df[feature].std()
+            train_mean = train_df[feature].mean()
+            train_df[feature] = (train_df[feature] - train_mean) / train_std
+            val_df[feature] = (val_df[feature] - train_mean) / train_std
+            test_df[feature] = (test_df[feature] - train_mean) / train_std
         # Scaled to range: [0,1], but the scaled val set and test set may breach the range.
         # Use the max and min of the train set to scale the val set and test set.
-        elif type == 'minmax':
-            if trained: # 已经训练好模型，必须用模型的统计要素
-                min = stats[feature]['min']
-                max = stats[feature]['max']
-            else: # 未训练模型，需要自行生成train set的统计要素
-                min = df[feature].min()
-                max = df[feature].max()
-            df[feature] = df[feature] - min / (max - min)
+        elif scale == 'minmax':
+            train_min = train_df[feature].min()
+            train_max = train_df[feature].max()
+            train_df[feature] = train_df[feature] - train_min / (train_max - train_min)
+            val_df[feature] = val_df[feature] - train_min / (train_max - train_min)
+            test_df[feature] = test_df[feature] - train_min / (train_max - train_min)
         else:
             raise NotImplementedError('No such scale method!')
-    return df, stats
+
+    return train_df, val_df, test_df
 
 
-def gen_trainset(df, columns: list, feature_outliners: list, seq_len=10, balance=True):
+def generate_dataset(df, columns: list, feature_outliners: list, seq_len=10, balance=True):
     """
-    生成用于训练的X和Y
     输入：已完成特征工程、Scaling的dataframe，包含features和labels
     输出：符合RNN要求的X和Y。
     具备特征值异常检测，特征值超过95%阈值的样本将被舍弃。如不需要特征异常检测，可设置feature_outliners为空表。
@@ -242,35 +200,6 @@ def gen_trainset(df, columns: list, feature_outliners: list, seq_len=10, balance
 
     return np.array(X), np.array(y)  # make X and y numpy arrays!
 
-def gen_pred_x(df, today, columns: list, seq_len=10):
-    """
-    生成用于预测的X
-    输入：1. 已完成特征工程以及Scaling的dataframe，包含datetime和features
-         2. 预测基准日
-    输出：符合RNN要求的X。
-        Args:
-            df(DataFrame): 待处理的dataframe，包含datetime和features。可以含未来样本。
-            today(datetime): 预测基准日，筛选出df里在此基准日（含）之前的输入样本。
-            columns(List): 字符串列表，待处理的features。
-            seq_len(int): time steps的长度
-        Returns:
-            X(ndarray): 2D numpy ndarray [time steps, feature dimensions]
-    """
-
-    df = df.dropna()  # cleanup again
-    df = df[df.date <= today]
-    if len(df) < seq_len:
-        raise ValueError(f'Samples ({len(df)}) less than seq_len ({seq_len})')
-    df = df.sort_values(by='date', ascending=False)  # 日期倒序排列，确保第1个row是today
-    prev_days = deque(maxlen=seq_len)
-    df = df[columns]
-    for row in df.itertuples(index=False):  # iterate over the rows，即每日的数据，row是namedtuple
-        prev_days.appendleft([n for n in row])  # 以一个list的形式存储当日的所有列, row进入prev_days后变成日期升序排列
-        if len(prev_days) == seq_len:  # 回溯seq_len个日期
-            break
-
-    return np.array(prev_days)
-
 
 def main():
     ROOT_PATH = 'd:/ProjectRicequant/fxincome/'
@@ -281,7 +210,7 @@ def main():
     df = feature_engineering(df, TBOND_PARAM.ALL_FEATS, future_period=1, label_type='fwd')
     df.to_csv(os.path.join(ROOT_PATH, DEST_NAME), index=False, encoding='utf-8')
 
-    train_df, val_df, test_df, stats = pre_process(df, TBOND_PARAM.SCALED_FEATS, scale_type='zscore')
+    train_df, val_df, test_df = pre_process(df, TBOND_PARAM.SCALED_FEATS, scale='zscore')
     train_df.to_csv(os.path.join(ROOT_PATH, 'train_samples.csv'), index=False, encoding='utf-8')
     val_df.to_csv(os.path.join(ROOT_PATH, 'validation_samples.csv'), index=False, encoding='utf-8')
     test_df.to_csv(os.path.join(ROOT_PATH, 'test_samples.csv'), index=False, encoding='utf-8')
