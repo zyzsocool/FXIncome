@@ -52,6 +52,7 @@ for index, row in asset_df.iterrows():
         bp_list.append(bp_i)
         get_net_profit(bond_i,base_date,row['ytm'],target_date,row['ytm']+bp_i/100,repo_rate)
     result.loc[index]=bp_list
+result=result.sort_values('period(years)')
 wirter = pd.ExcelWriter(address_out)
 data['parameter'].to_excel(wirter, sheet_name='parameter', index=False)
 data['asset'].to_excel(wirter, sheet_name='asset', index=False)

@@ -377,7 +377,7 @@ class Portfolio_Bond():
         except:
             date_range=pd.DataFrame({'date':pd.date_range(repo_for_position.date.iat[0],repo_for_position.date.iat[-1])})
         repo_for_position=repo_for_position.reset_index()
-        repo_for_position['index'].iat[0]=np.nan
+        repo_for_position['index'].iat[0]=1
         repo_for_position['repo_interest'].iat[0]=np.nan
         repo_for_position=pd.merge(date_range,repo_for_position,on='date',how='left').fillna(method='bfill')
         repo_for_position['repo_interest']=repo_for_position.groupby('index')['repo_interest'].transform(lambda x:x.mean()/x.count()).cumsum()
@@ -386,7 +386,7 @@ class Portfolio_Bond():
         position_gain_agg_l2_df['gain_sum']=position_gain_agg_l2_df['gain']+position_gain_agg_l2_df['repo_interest']
         begin_date=position_gain_agg_l2_df.date.iat[0]
         if initial_cash>0:
-            position_gain_agg_l2_df['ytm']=position_gain_agg_l2_df.apply(lambda x:x['gain_sum']/initial_cash/((x['date']-begin_date).days+1)*365,axis=1)
+            position_gain_agg_l2_df['profit_rate']=position_gain_agg_l2_df.apply(lambda x:x['gain_sum']/initial_cash/((x['date']-begin_date).days+1)*365,axis=1)
 
 
 

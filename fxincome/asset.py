@@ -1,3 +1,6 @@
+import sys
+import time
+
 import pandas as pd
 from fxincome.const import COUPON_TYPE
 from fxincome.const import CASHFLOW_TYPE
@@ -333,6 +336,50 @@ class Bond:
         ytm = self.curve_to_ytm(date, curve_df)
         duration = self.ytm_to_duration(date, ytm, DURARION_TYPE)
         return duration
+    def get_profit(self, initial_date, end_date, begin_ytm, end_ytm):
+        # print(self.code)
+        buy_price=self.ytm_to_dirtyprice(initial_date, begin_ytm)
+        sell_price=self.ytm_to_dirtyprice(end_date,end_ytm)
+        cashflow=self._cashflow_df.copy()
+
+        cashflow=cashflow[(cashflow['date'] > initial_date) & (cashflow['date'] <= end_date)]
+        cashflow.loc['buy']=[initial_date,-buy_price]
+        cashflow.loc['sell']=[end_date,sell_price]
+        if end_date==self.end_date:
+            cashflow.loc['adjust']=[end_date,-100]
+        profit=cashflow['cash'].sum()
+        yeild_simple= (profit/buy_price) / (end_date - initial_date).days * 365
+        # 年化收益大于100%的按100%，小于-100%的按-100%算
+        if yeild_simple<=-1:
+            yeild_simple=-1
+            yeild_coumpound=-1
+        elif yeild_simple>=1:
+            yeild_simple=1
+            yeild_coumpound=1
+        else:
+            y1=-1
+            y2=2
+
+
+            while True:
+
+                yeild_coumpound=(y1+y2)/2
+                cashflow['cash_defalted']=cashflow.apply(lambda x:x['cash']/(1+yeild_coumpound)**((x['date']-initial_date).days/365),axis=1)
+                npv=cashflow['cash_defalted'].sum()
+
+
+                if abs(npv)<0.001:
+                    break
+
+                if npv<0:
+                    y2=yeild_coumpound
+                else:
+                    y1=yeild_coumpound
+                # if self.code=='190208.IB':
+                #     print(yeild_coumpound,yeild_simple,npv)
+
+
+        return profit,yeild_coumpound*100,yeild_simple*100
 def produce_standard_bond(date, year,coupon_rate, issue_price=100, coupon_type='附息', coupon_frequency=1):
     code='{}-{}'.format(datetime.datetime.strftime(date,'%Y%m%d'),year)
     initial_date=date

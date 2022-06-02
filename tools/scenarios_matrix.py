@@ -73,6 +73,14 @@ agg_df['IRR'] = agg_df.apply(lambda x: round(x['IRR'] / (x['date'] - base_date).
 pivot_df = pd.pivot_table(agg_df, index='pips', columns='date', values='IRR')
 pivot_df.columns = ['T+{}'.format((i - base_date).days) for i in pivot_df.columns]
 
+agg_df = result_df.groupby(['pips', 'date']).\
+    apply(lambda x: pd.Series({
+    'gain_sum': x['gain_sum'].sum(),
+    'maturity': round(sum(x['maturity'] * x['value']) / x['value'].sum(), 2)
+})).reset_index()
+gain_df = pd.pivot_table(agg_df, index='pips', columns='date', values='gain_sum')
+gain_df.columns = ['T+{}'.format((i - base_date).days) for i in gain_df.columns]
+
 time = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
 address = r'.\result\ss_result_{}.xlsx'.format(time)
 wirter = pd.ExcelWriter(address)
@@ -84,6 +92,7 @@ result_df = result_df[
     ['code', 'pips', 'days', 'gain_sum', 'interest_sum', 'float_gain_sum', 'price_gain_sum', 'reinvest_interest']]
 parameter.to_excel(wirter, sheet_name='parameter', index=False)
 bond.to_excel(wirter, sheet_name='holding', index=False)
-pivot_df.to_excel(wirter, sheet_name='result')
+pivot_df.to_excel(wirter, sheet_name='result_rate')
+gain_df.to_excel(wirter, sheet_name='result_value')
 result_df.to_excel(wirter, sheet_name='detail')
 wirter.save()
