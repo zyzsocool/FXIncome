@@ -2,7 +2,8 @@ import pytest
 import joblib
 import os
 import tensorflow.keras
-from fxincome.utils import ModelAttr, JsonModel
+import numpy as np
+from fxincome.utils import ModelAttr, JsonModel, get_curve
 
 
 class TestModel:
@@ -78,3 +79,41 @@ class TestModel:
         lstm_model = tensorflow.keras.models.load_model(JsonModel.model_path + global_data['lstm_name'])
         nn_model = nn_dict[global_data['lstm_model']]
         assert nn_model.summary() == lstm_model.summary()
+
+
+class TestCurve:
+
+    @pytest.fixture(scope='class')
+    def global_data(self):
+        points = np.array([[0, 1.5855],
+                           [1, 2.3438],
+                           [2, 2.5848],
+                           [3, 2.6617],
+                           [4, 2.7545],
+                           [5, 2.8526],
+                           [6, 2.9594],
+                           [7, 3.0125],
+                           [8, 3.0022],
+                           [9, 2.9863],
+                           [10, 2.9879],
+                           [15, 3.3447],
+                           [20, 3.3764],
+                           [30, 3.5329],
+                           [40, 3.5785],
+                           [50, 3.595]])
+
+        return {'points': points,
+                'linear_point_between': 2.7081,
+                'hermit_point_between': 2.706775,
+                'ytm_3y': 2.6617,
+                'ytm_5y': 2.8526}
+
+    def test_get_curve(self, global_data):
+        linear_fitting = get_curve(global_data['points'], 'LINEAR')
+        hermit_fitting = get_curve(global_data['points'], 'HERMIT')
+        assert global_data['ytm_3y'] == pytest.approx(linear_fitting(3))
+        assert global_data['ytm_3y'] == pytest.approx(hermit_fitting(3))
+        assert global_data['ytm_5y'] == pytest.approx(linear_fitting(5))
+        assert global_data['ytm_5y'] == pytest.approx(hermit_fitting(5))
+        assert global_data['linear_point_between'] == pytest.approx(linear_fitting(3.5))
+        assert global_data['hermit_point_between'] == pytest.approx(hermit_fitting(3.5))
