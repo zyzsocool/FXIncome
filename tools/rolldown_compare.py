@@ -60,17 +60,21 @@ if __name__ == '__main__':
     max_date = min_max_list[1][1]
     asset_df['initial_date'] = pd.to_datetime(asset_df['initial_date'])
     asset_df['end_date'] = pd.to_datetime(asset_df['end_date'])
+    #  按照券种、交易量排名等筛选债券
     asset_df = asset_df[(asset_df['bond_type'].isin(bond_type_need)) &
-                        (asset_df['end_date'] > min_date) &
-                        (asset_df['end_date'] < max_date) &
                         (asset_df['code'].str.contains('IB'))]
     asset_df['period'] = asset_df['end_date'].apply(lambda x: round((x - date).days / 365))
     asset_df['period2'] = asset_df['end_date'].apply(lambda x: round((x - date).days / 365, 2))
+    #  每个关键期限按交易量大小选出2只代表券，用于描绘收益率曲线
     asset_df['ranking'] = asset_df[['trading', 'period']].groupby('period').transform(lambda x: x >= maxx(x, 2))
     asset_df = asset_df[(asset_df['ranking']) & (asset_df['trading'] > 0)].sort_values(['period2'], ignore_index=True)
-    asset_df = asset_df.iloc[:, 10:]
-    curve_dot = asset_df[['period2', 'ytm']].to_numpy()
+    yield_df = asset_df.iloc[:, 10:]
+    #  构造收益率曲线
+    curve_dot = yield_df[['period2', 'ytm']].to_numpy()
     curve = get_curve(curve_dot, 'HERMIT')
+    #  按照日期区间筛选展示债券
+    asset_df = asset_df[(asset_df['end_date'] >= min_date) &
+                        (asset_df['end_date'] <= max_date)]
     hold_time = parameter_df.at['持有期限', '数值']
     period_list = parse_dates(hold_time, date)
     asset_dic = {}
@@ -94,7 +98,6 @@ if __name__ == '__main__':
     reuslt_overview = asset_df[['bond'] + hold_time_title].set_index('bond')
     print(reuslt_overview)
     reuslt_overview = reuslt_overview.applymap(lambda x: round(x, 2) if pd.notnull(x) else x)
-    print(reuslt_overview)
 
     asset_df = asset_df.set_index('code')
     result_dic = {}
@@ -128,12 +131,12 @@ if __name__ == '__main__':
                     y = (y1 + y2) / 2
                     # if i==18:
                     #     print(y)
-                    yeild = asset_dic[j['bond_base']].get_profit(date, k[1], j['bond_base_ytm'], y)[1]
-                    if abs(yeild - j['bond_target_yeild']) < 0.01:
+                    yld = asset_dic[j['bond_base']].get_profit(date, k[1], j['bond_base_ytm'], y)[1]
+                    if abs(yld - j['bond_target_yeild']) < 0.01:
                         break
-                    if (abs(yeild - j['bond_target_yeild']) < 0.1) & (abs(y - y_last) < 0.0001):
+                    if (abs(yld - j['bond_target_yeild']) < 0.1) & (abs(y - y_last) < 0.0001):
                         break
-                    if yeild < j['bond_target_yeild']:
+                    if yld < j['bond_target_yeild']:
                         y2 = y
                     else:
                         y1 = y
@@ -154,7 +157,8 @@ if __name__ == '__main__':
         reuslt_k['base_bond'] = reuslt_k['base_bond'].astype(rank_type)
         reuslt_k['target_bond'] = reuslt_k['target_bond'].astype(rank_type)
         result_k_pivot = pd.pivot_table(reuslt_k, index='base_bond', columns='target_bond', values='bp',
-                                        aggfunc='sum').applymap(lambda x: round(x, 2) if pd.notnull(x) else x)
+                                        aggfunc='sum', margins=True, margins_name='sum')
+        result_k_pivot = result_k_pivot.round(2)
         result_dic[k[0]] = result_k_pivot
 
     time = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
@@ -165,11 +169,15 @@ if __name__ == '__main__':
         j.to_excel(writer, sheet_name=i)
     writer.save()
 
+    #  描绘收益率曲线。为了只展示指定期限范围内的收益率曲线，重新筛选取样点
+    yield_df = asset_df.iloc[:, 10:]
+    curve_dot = yield_df[['period2', 'ytm']].to_numpy()
+    curve = get_curve(curve_dot, 'HERMIT')
     plt.figure()
-    x = np.linspace(0, curve_dot[-1, 0], 10000)
+    x = np.linspace(curve_dot[0, 0], curve_dot[-1, 0], 10000)
     plt.plot(x, [curve(i) for i in x])
     plt.scatter(curve_dot[:, 0], curve_dot[:, 1], marker='*')
-    plt.xticks(range(0, int(curve_dot[-1, 0]) + 2))
+    plt.xticks(range(int(curve_dot[0, 0]), int(curve_dot[-1, 0]) + 2))
     plt.grid(True)
 
     address = r'.\result\rc_result_{}.jpg'.format(time)
