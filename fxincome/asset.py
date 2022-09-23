@@ -1,6 +1,3 @@
-import sys
-import time
-
 import pandas as pd
 from fxincome.const import COUPON_TYPE
 from fxincome.const import CASHFLOW_TYPE
@@ -8,11 +5,19 @@ import datetime
 import calendar
 import numpy as np
 from dateutil.relativedelta import relativedelta
+from scipy import optimize
+
+
+def f_npv(ytm, time, cash):
+    npv = 0
+    for t, c in zip(time, cash):
+        npv += c / ((1 + ytm) ** t)
+    return npv
 
 
 class Bond:
     def __init__(self, code, initial_date, end_date, issue_price, coupon_rate, coupon_type, coupon_frequency,
-                 coupon_period=None,bond_name=None,bond_type=None):
+                 coupon_period=None, bond_name=None, bond_type=None):
         self.code = code
         self.initial_date = initial_date
         self.end_date = end_date
@@ -23,8 +28,8 @@ class Bond:
         self.coupon_frequency = coupon_frequency
         self.coupon_period = coupon_period if coupon_period else end_date.year - initial_date.year  # 债券期限（年），如果是整年的债券就可以不输入coupon_period,非整年的就要输入
         self._cashflow_df = self.cal_cashflow()
-        self.bond_name=bond_name
-        self.bond_type=bond_type
+        self.bond_name = bond_name
+        self.bond_type = bond_type
 
     def get_dailycoupon(self, date):
         cashflow_df = self.get_cashflow(date, 'Undelivered_Lastone')
@@ -124,11 +129,11 @@ class Bond:
                                            in range(cashflow_df.shape[0])]
             # 只剩下最后一个付息期
             elif cashflow_df.shape[0] == 1:
-                year_days = 366 if calendar.isleap(cashflow_df['date'].iat[0].year) else 365 # 闰年366天，其余365天
+                year_days = 366 if calendar.isleap(cashflow_df['date'].iat[0].year) else 365  # 闰年366天，其余365天
                 cashflow_df['deflator'] = [1 / (1 + ytm / 100 * t / year_days)]
         # 剩余期限不超过1年的贴现债券、剩余期限不超过1年的到期还本付息债券
         elif self.coupon_type in [COUPON_TYPE.ZERO, COUPON_TYPE.DUE]:
-            year_days = 366 if calendar.isleap(cashflow_df['date'].iat[0].year) else 365 # 闰年366天，其余365天
+            year_days = 366 if calendar.isleap(cashflow_df['date'].iat[0].year) else 365  # 闰年366天，其余365天
             cashflow_df['deflator'] = [1 / (1 + ytm / 100 * t / year_days)]
         cashflow_df['cash_deflated'] = cashflow_df['cash'] * cashflow_df['deflator']
         dirtyprice = cashflow_df['cash_deflated'].sum()
@@ -205,6 +210,7 @@ class Bond:
         Returns:
             ytm(float)：Yield to maturity
     """
+
     def curve_to_ytm(self, date, curve_df):
         days = (self.end_date - date).days
         begin_num = sum(curve_df['days'].apply(lambda x: x <= days)) - 1
@@ -217,7 +223,7 @@ class Bond:
             raise Exception('The curve is too short' + '(' + self.code + ')')
         else:
             ytm = (curve_df.iloc[1, 1] - curve_df.iloc[0, 1]) / (curve_df.iloc[1, 0] - curve_df.iloc[0, 0]) * (
-                        days - curve_df.iloc[0, 0]) + curve_df.iloc[0, 1]
+                    days - curve_df.iloc[0, 0]) + curve_df.iloc[0, 1]
             return ytm
 
     def curve_to_dirtyprice(self, date, curve_df):
@@ -314,6 +320,7 @@ class Bond:
         Returns:
             duration(float)：Duration
     """
+
     def ytm_to_duration(self, date, ytm, DURARION_TYPE):
         if not ytm:
             return np.nan
@@ -336,56 +343,63 @@ class Bond:
         ytm = self.curve_to_ytm(date, curve_df)
         duration = self.ytm_to_duration(date, ytm, DURARION_TYPE)
         return duration
+
     def get_profit(self, initial_date, end_date, begin_ytm, end_ytm):
         # print(self.code)
-        buy_price=self.ytm_to_dirtyprice(initial_date, begin_ytm)
-        sell_price=self.ytm_to_dirtyprice(end_date,end_ytm)
-        cashflow=self._cashflow_df.copy()
+        buy_price = self.ytm_to_dirtyprice(initial_date, begin_ytm)
+        sell_price = self.ytm_to_dirtyprice(end_date, end_ytm)
+        cashflow = self._cashflow_df.copy()
 
-        cashflow=cashflow[(cashflow['date'] > initial_date) & (cashflow['date'] <= end_date)]
-        cashflow.loc['buy']=[initial_date,-buy_price]
-        cashflow.loc['sell']=[end_date,sell_price]
-        if end_date==self.end_date:
-            cashflow.loc['adjust']=[end_date,-100]
-        profit=cashflow['cash'].sum()
-        yeild_simple= (profit/buy_price) / (end_date - initial_date).days * 365
+        cashflow = cashflow[(cashflow['date'] > initial_date) & (cashflow['date'] <= end_date)]
+        cashflow.loc['buy'] = [initial_date, -buy_price]
+        cashflow.loc['sell'] = [end_date, sell_price]
+        if end_date == self.end_date:
+            cashflow.loc['adjust'] = [end_date, -100]
+        profit = cashflow['cash'].sum()
+        yield_simple = (profit / buy_price) / (end_date - initial_date).days * 365
+        ts = [(d - initial_date).days / 365 for d in cashflow.date.to_list()]
+        cf = cashflow.cash.to_list()
+
         # 年化收益大于100%的按100%，小于-100%的按-100%算
-        if yeild_simple<=-1:
-            yeild_simple=-1
-            yeild_coumpound=-1
-        elif yeild_simple>=1:
-            yeild_simple=1
-            yeild_coumpound=1
+        if yield_simple <= -1:
+            yield_simple = -1
+            yield_compound = -1
+        elif yield_simple >= 1:
+            yield_simple = 1
+            yield_compound = 1
         else:
-            y1=-1
-            y2=2
+            yield_compound = optimize.brentq(f_npv,
+                                             a=-0.99,  # f(a) and f(b) must have opposite signs
+                                             b=2,
+                                             xtol=1e-8,
+                                             args=(ts, cf),
+                                             disp=True
+                                             )
+
+            # y1 = -1
+            # y2 = 2
+            # maxiter = 100
+            # for _ in range(maxiter):
+            #     yield_compound = (y1 + y2) / 2
+            #     npv = f_npv(yield_compound, ts, cf)
+            #     if abs(npv) < 1e-8:
+            #         break
+            #     if npv < 0:
+            #         y2 = yield_compound
+            #     else:
+            #         y1 = yield_compound
+        # print(f'yield_comp:{yield_compound}')
+        # print(f'yield_simple:{yield_simple}')
+        return profit, yield_compound * 100, yield_simple * 100
 
 
-            while True:
-
-                yeild_coumpound=(y1+y2)/2
-                cashflow['cash_defalted']=cashflow.apply(lambda x:x['cash']/(1+yeild_coumpound)**((x['date']-initial_date).days/365),axis=1)
-                npv=cashflow['cash_defalted'].sum()
-
-
-                if abs(npv)<0.001:
-                    break
-
-                if npv<0:
-                    y2=yeild_coumpound
-                else:
-                    y1=yeild_coumpound
-                # if self.code=='190208.IB':
-                #     print(yeild_coumpound,yeild_simple,npv)
-
-
-        return profit,yeild_coumpound*100,yeild_simple*100
-def produce_standard_bond(date, year,coupon_rate, issue_price=100, coupon_type='附息', coupon_frequency=1):
-    code='{}-{}'.format(datetime.datetime.strftime(date,'%Y%m%d'),year)
-    initial_date=date
-    end_date=date+ relativedelta(years=year)
-    standard_bond=Bond(code, initial_date, end_date, issue_price, coupon_rate, coupon_type, coupon_frequency)
+def produce_standard_bond(date, year, coupon_rate, issue_price=100, coupon_type='附息', coupon_frequency=1):
+    code = '{}-{}'.format(datetime.datetime.strftime(date, '%Y%m%d'), year)
+    initial_date = date
+    end_date = date + relativedelta(years=year)
+    standard_bond = Bond(code, initial_date, end_date, issue_price, coupon_rate, coupon_type, coupon_frequency)
     return standard_bond
+
 
 if __name__ == '__main__':
     # code = '219915'
@@ -399,10 +413,10 @@ if __name__ == '__main__':
     # date = datetime.datetime(2021, 9, 30)
     # cleanprice = 98.9620
     # print(a.cleanprice_to_ytm(date,cleanprice))
-    date=datetime.datetime(2021,12,21)
-    year=1
+    date = datetime.datetime(2021, 12, 21)
+    year = 1
     coupon_rate = 2.5
-    bond=produce_standard_bond(date,year,coupon_rate, coupon_type='到期一次还本付息', coupon_frequency=1)
+    bond = produce_standard_bond(date, year, coupon_rate, coupon_type='到期一次还本付息', coupon_frequency=1)
     print(bond.get_cashflow(date))
 
     # print(a.accrued_interest(date))

@@ -98,7 +98,6 @@ if __name__ == '__main__':
     reuslt_overview = asset_df[['bond'] + hold_time_title].set_index('bond')
     print(reuslt_overview)
     reuslt_overview = reuslt_overview.applymap(lambda x: round(x, 2) if pd.notnull(x) else x)
-    print(reuslt_overview)
 
     asset_df = asset_df.set_index('code')
     result_dic = {}
@@ -132,12 +131,12 @@ if __name__ == '__main__':
                     y = (y1 + y2) / 2
                     # if i==18:
                     #     print(y)
-                    yeild = asset_dic[j['bond_base']].get_profit(date, k[1], j['bond_base_ytm'], y)[1]
-                    if abs(yeild - j['bond_target_yeild']) < 0.01:
+                    yld = asset_dic[j['bond_base']].get_profit(date, k[1], j['bond_base_ytm'], y)[1]
+                    if abs(yld - j['bond_target_yeild']) < 0.01:
                         break
-                    if (abs(yeild - j['bond_target_yeild']) < 0.1) & (abs(y - y_last) < 0.0001):
+                    if (abs(yld - j['bond_target_yeild']) < 0.1) & (abs(y - y_last) < 0.0001):
                         break
-                    if yeild < j['bond_target_yeild']:
+                    if yld < j['bond_target_yeild']:
                         y2 = y
                     else:
                         y1 = y

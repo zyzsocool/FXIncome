@@ -1,14 +1,22 @@
+import traceback
+import math
 import os.path
 import pandas as pd
 import numpy as np
 import datetime
 import plotly.graph_objects as go
 from statsmodels.tsa.stattools import adfuller
+from statsmodels.tsa.ar_model import AutoReg
+from sklearn.metrics import mean_squared_error
 from pandas_profiling import ProfileReport
-from financepy.utils import *
+from financepy.utils import from_datetime
 from financepy.products.bonds import *
 
 root_path = 'd:/ProjectRicequant/fxincome/'
+chinabond_ttm_labels = ['6m', '1y', '2y', '3y', '4y', '5y', '6y', '7y', '8y', '9y', '10y']
+predicted_ttm_labels = ['pred_6m', 'pred_1y', 'pred_2y', 'pred_3y', 'pred_4y', 'pred_5y', 'pred_6y', 'pred_7y',
+                        'pred_8y', 'pred_9y', 'pred_10y']
+maturities = [0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 
 def to_bond_freq(freq):
@@ -78,16 +86,28 @@ def preprocess():
 
 
 def check_csv():
-    source = 'cdb_valuation_processed.csv'
-    bond_df = pd.read_csv(root_path + source, parse_dates=['date', 'issue_date', 'maturity_date'],
-                     encoding='gb2312')
-    bond_dates = set(bond_df.date.dt.date.to_list())
-    ytm_df = pd.read_csv(root_path + 'cdb_ytm.csv', parse_dates=['date'], encoding='gb2312')
-    ytm_dates = set(ytm_df.date.dt.date.to_list())
-    difference = list(ytm_dates - bond_dates)
-    difference.sort()
-    print(difference)
-    print(len(difference))
+    # source = 'cdb_valuation_processed.csv'
+    # bond_df = pd.read_csv(root_path + source, parse_dates=['date', 'issue_date', 'maturity_date'],
+    #                       encoding='gb2312')
+    # bond_dates = set(bond_df.date.dt.date.to_list())
+    # ytm_df = pd.read_csv(root_path + 'cdb_ytm.csv', parse_dates=['date'], encoding='gb2312')
+    # ytm_dates = set(ytm_df.date.dt.date.to_list())
+    # difference = list(ytm_dates - bond_dates)
+    # difference.sort()
+    # print(difference)
+    # print(len(difference))
+    # df = pd.read_csv('./results/ns_params_20100104_20220729.csv', parse_dates=['date'])
+    # report = ProfileReport(df)
+    # report.to_file('./results/ns_params_report.html')
+    df = pd.DataFrame(
+        {"value": np.random.randn(36)},
+        index=pd.date_range("2011-01-01", freq="M", periods=36),
+    )
+    table = pd.pivot_table(
+        df, index=df.index.month, columns=df.index.year, values="value", aggfunc="sum"
+    )
+    print(df)
+    print(table)
 
 
 def gen_curves(fit_type: str, start: datetime.datetime, end: datetime.datetime, plot: bool) -> pd.DataFrame:
@@ -195,7 +215,7 @@ def nss_fit(bonds, nss_stats, ytm_date, ytms, bounds, plot=False):
 def curves_stats():
     df = pd.read_csv(root_path + 'cdb_ytm.csv', parse_dates=['date'], encoding='gb2312').set_index('date')
     df['slope'] = df['10y'] - df['6m']
-    df['curvature'] = 2 * df['2y'] - df['10y'] - df['6m']
+    df['curvature'] = df['10y'] + df['6m'] - 2 * df['2y']
     df.to_csv('./results/chinabond_ytm.csv', encoding='utf-8')
     corr_df = pd.DataFrame(columns=['maturity', 'p_1M', 'p_1Y', 'p_2.5Y'])
     for col in df.columns:
@@ -234,6 +254,45 @@ def curves_stats():
     ns_stats.at['beta3', 'ADF'] = b3_adf
     ns_stats.at['beta3', 'P_Value'] = b3_pval
     ns_stats.to_csv('./results/ns_params_stats.csv')
+
+
+def fit_stats():
+    chinabond = pd.read_csv('./results/' + 'chinabond_ytm.csv', parse_dates=['date'], encoding='gb2312').set_index(
+        'date')
+    ns = pd.read_csv('./results/' + 'ns_params_20100104_20220729.csv', parse_dates=['date'],
+                     encoding='gb2312').set_index(
+        'date')
+    combined = chinabond.join(ns)
+    combined = combined[chinabond.columns.values.tolist() + ['beta1', 'beta2', 'beta3', 'tau']]
+    for curve in combined.itertuples():
+        ns_curve = CurveFitNelsonSiegel(tau=curve.tau)
+        ns_curve._beta1 = curve.beta1
+        ns_curve._beta2 = curve.beta2
+        ns_curve._beta3 = curve.beta3
+        for chinabond_label, pred_label, ttm in zip(chinabond_ttm_labels, predicted_ttm_labels, maturities):
+            combined.at[curve.Index, pred_label] = round(ns_curve._interpolated_yield(ttm) * 100, 2)
+    combined.to_csv('./results/fit_stat.csv')
+    real_fitted_ytm = pd.DataFrame(columns=['Indicator'] + chinabond_ttm_labels)
+    real_avgs = [chinabond[t].mean() for t in chinabond_ttm_labels]
+    fitted_avgs = [combined[t].mean() for t in predicted_ttm_labels]
+    errors = [real - fitted for real, fitted in zip(real_avgs, fitted_avgs)]
+    real_fitted_ytm.loc[0] = ['Average Chinabond YTM'] + real_avgs
+    real_fitted_ytm.loc[1] = ['Average Fitted YTM'] + fitted_avgs
+    real_fitted_ytm.loc[2] = ['Average YTM Errors'] + errors
+    real_fitted_ytm = real_fitted_ytm.round(2).set_index('Indicator').T
+    real_fitted_ytm.to_csv('./results/chinabond_vs_fitted.csv')
+    corr_real_beta = combined[['beta1', 'beta2', 'beta3', '10y', 'slope', 'curvature']].corr().round(2)
+    corr_real_beta.to_csv('./results/corr_real_beta.csv')
+    real_fitted_ytm['maturity'] = maturities
+    ax = real_fitted_ytm.plot(kind='line', x='maturity', y='Average Chinabond YTM', color='red',
+                              label='Average Chinabond YTM')
+    real_fitted_ytm.plot(kind='scatter', x='maturity', y='Average Fitted YTM', ax=ax, style='*',
+                         label='Average Fitted YTM')
+    plt.xlabel('Time to Maturity (years)')
+    plt.ylabel('Yield To Maturity (%)')
+    plt.grid(True)
+    plt.savefig(f'./results/chinabond_vs_fitted.jpg')
+    plt.close()
 
 
 def plot_ytm_3d_surface():
@@ -278,6 +337,46 @@ def plot_ytm_3d_surface():
     fig.show()
 
 
+def forecast():
+    factors = pd.read_csv('d:/ProjectRicequant/fxincome/eco_factors_2010_202207.csv', parse_dates=['date']).set_index(
+        'date')
+    factors = factors[factors.index >= datetime.datetime(2015, 12, 1)]
+    ns_params = pd.read_csv('./results/fit_stat.csv', parse_dates=['date']).set_index('date')
+    ns_params = ns_params[['beta1', 'beta2', 'beta3']]
+    ns_params = ns_params * 100
+    # pd.plotting.autocorrelation_plot(ns_params.beta3)
+    X = ns_params.beta1.values
+    print(X)
+    train, test = X[3000: len(X) - 44], X[len(X) - 44:]
+    model = AutoReg(train, lags=22)
+    model_fit = model.fit()
+    print(f'Coefficients: {model_fit.params}')
+    predictions = model_fit.predict(start=len(train), end=len(train) + len(test) - 1, dynamic=False)
+    for i in range(len(predictions)):
+        print(f'predicted={predictions[i]}, expected={test[i]}')
+    rmse = math.sqrt(mean_squared_error(test, predictions))
+    print(f'RMSE:{rmse:.3f}')
+    plt.plot(test)
+    plt.plot(predictions, color='red')
+    plt.show()
+
+    ns_params = ns_params.groupby(pd.Grouper(freq='MS')).nth(10)  # 假设每个月的第11个交易日或之后才出上个月的经济数据
+    ns_params = ns_params[ns_params.index >= datetime.datetime(2015, 12, 1)]
+    ppi_adf = adfuller(factors.ppi.to_numpy())
+    cpi_adf = adfuller(factors.cpi.to_numpy())
+    m2_adf = adfuller(factors.m2.to_numpy())
+    delta_adf = adfuller(factors.delta_fin_m2.to_numpy())
+    # print(f'ppi adf: {ppi_adf[0]}, p: {ppi_adf[1]}')
+    # print(f'cpi adf: {cpi_adf[0]}, p: {cpi_adf[1]}')
+    # print(f'm2 adf: {m2_adf[0]}, p: {m2_adf[1]}')
+    # print(f'delta adf: {delta_adf[0]}, p: {delta_adf[1]}')
+    df = ns_params.merge(factors, on='date')
+    df['beta1_lag1'] = df.beta1.shift(-1)
+    df['beta2_lag1'] = df.beta2.shift(-1)
+    df['beta3_lag1'] = df.beta3.shift(-1)
+    df.corr().to_csv('./results/param_factors.csv', index=True)
+
+
 if __name__ == '__main__':
     # preprocess()
     check_csv()
@@ -285,4 +384,6 @@ if __name__ == '__main__':
     # ns_df = pd.read_csv('./results/ns_params_20100104_20220729.csv', parse_dates=['date'], encoding='gb2312')
     # plot_ns_params(ns_df)
     # curves_stats()
+    # fit_stats()
     # plot_ytm_3d_surface()
+    # forecast()
