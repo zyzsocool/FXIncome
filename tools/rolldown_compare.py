@@ -1,5 +1,4 @@
-from fxincome.asset import Bond
-from fxincome.utils import get_curve
+from fxincome.asset import Bond, get_curve
 import datetime
 import pandas as pd
 import numpy as np

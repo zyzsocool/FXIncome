@@ -15,6 +15,114 @@ def f_npv(ytm, time, cash):
     return npv
 
 
+def get_curve(points, type):
+    """
+    使用收益率曲线中已知的一组点，通过指定的拟合算法生成任意点的收益率。
+    该函数返回一个收益率曲线函数func(x)，使用者利用func(x)即可计算期限对应的收益率。
+    对于一个point(x, y)，x坐标是年（单位为年），y坐标是收益率（单位为%）。
+        Args:
+            points(ndarray): 收益率曲线中已知的点，形状是2D Array [[x1,y1], [x2,y2] ... [xn,yn]]，其中x不能重复
+            type(str): [LINEAR, POLYNOMIAL, HERMIT, SPLINE]
+        Returns:
+            func(float): 输入任意年限，输出对应的拟合收益率。输入单位是年，输出单位是%
+    """
+
+    size = points.shape[0]
+    if type == 'LINEAR':
+        points = points[points[:, 0].argsort()]  # 以x坐标（年限）作升序排序
+
+        def func(x):
+            for i in range(1, size):
+                if x <= points[i, 0]:
+                    break
+            return (points[i, 1] - points[i - 1, 1]) / (points[i, 0] - points[i - 1, 0]) * (x - points[i - 1, 0]) + \
+                   points[
+                       i - 1, 1]
+    elif type == 'POLYNOMIAL':
+        matrix_x = np.zeros([size, size])
+        matrix_y = np.array(points[:, 1])
+        for i in range(size):
+            for j in range(size):
+                matrix_x[i, j] = points[i, 0] ** j
+        para = np.dot(np.linalg.inv(matrix_x), matrix_y)
+
+        def func(x):
+            xx = np.array([x ** i for i in range(size)])
+            return np.dot(para, xx)
+    elif type == 'HERMIT':
+        matrix_x = np.zeros([(size - 1) * 4, (size - 1) * 4])
+        matrix_y = np.zeros([(size - 1) * 4])
+        y_1 = [(points[1, 1] - points[0, 1]) / (points[1, 0] - points[0, 0])] + \
+              [(points[i + 1, 1] - points[i - 1, 1]) / (points[i + 1, 0] - points[i - 1, 0]) for i in
+               range(1, size - 1)] + \
+              [(points[size - 1, 1] - points[size - 2, 1]) / (points[size - 1, 0] - points[size - 2, 0])]
+        for i in range(size - 1):
+            for j in range(2):
+                matrix_x[2 * i + j, 4 * i] = points[i + j, 0] ** 3
+                matrix_x[2 * i + j, 4 * i + 1] = points[i + j, 0] ** 2
+                matrix_x[2 * i + j, 4 * i + 2] = points[i + j, 0]
+                matrix_x[2 * i + j, 4 * i + 3] = 1
+                matrix_y[2 * i + j] = points[i + j, 1]
+
+                matrix_x[2 * (size - 1) + 2 * i + j, 4 * i] = 3 * points[i + j, 0] ** 2
+                matrix_x[2 * (size - 1) + 2 * i + j, 4 * i + 1] = 2 * points[i + j, 0]
+                matrix_x[2 * (size - 1) + 2 * i + j, 4 * i + 2] = 1
+                matrix_y[2 * (size - 1) + 2 * i + j] = y_1[i + j]
+        para = np.dot(np.linalg.inv(matrix_x), matrix_y)
+
+        def func(x):
+            xx = np.zeros((size - 1) * 4)
+            for i in range(1, size):
+                if x <= points[i, 0]:
+                    break
+            xx[4 * (i - 1)] = x ** 3
+            xx[4 * (i - 1) + 1] = x ** 2
+            xx[4 * (i - 1) + 2] = x
+            xx[4 * (i - 1) + 3] = 1
+            return np.dot(para, xx)
+    elif type == 'SPLINE':
+        matrix_x = np.zeros([(size - 1) * 4, (size - 1) * 4])
+        matrix_y = np.zeros([(size - 1) * 4])
+        for i in range(size - 1):
+            for j in range(2):
+                matrix_x[2 * i + j, 4 * i] = points[i + j, 0] ** 3
+                matrix_x[2 * i + j, 4 * i + 1] = points[i + j, 0] ** 2
+                matrix_x[2 * i + j, 4 * i + 2] = points[i + j, 0]
+                matrix_x[2 * i + j, 4 * i + 3] = 1
+                matrix_y[2 * i + j] = points[i + j, 1]
+        for i in range(size - 2):
+            matrix_x[(size - 1) * 2 + 2 * i, 4 * i] = 3 * points[i + 1, 0] ** 2
+            matrix_x[(size - 1) * 2 + 2 * i, 4 * i + 1] = 2 * points[i + 1, 0]
+            matrix_x[(size - 1) * 2 + 2 * i, 4 * i + 2] = 1
+            matrix_x[(size - 1) * 2 + 2 * i, 4 * i + 4] = -3 * points[i + 1, 0] ** 2
+            matrix_x[(size - 1) * 2 + 2 * i, 4 * i + 5] = -2 * points[i + 1, 0]
+            matrix_x[(size - 1) * 2 + 2 * i, 4 * i + 6] = -1
+
+            matrix_x[(size - 1) * 2 + 2 * i + 1, 4 * i] = 6 * points[i + 1, 0]
+            matrix_x[(size - 1) * 2 + 2 * i + 1, 4 * i + 1] = 2
+            matrix_x[(size - 1) * 2 + 2 * i + 1, 4 * i + 4] = -6 * points[i + 1, 0]
+            matrix_x[(size - 1) * 2 + 2 * i + 1, 4 * i + 5] = -2
+            matrix_x[(size - 1) * 2 + 2 * i + 1, 4 * i + 7] = -1
+        matrix_x[-2, 0] = 6 * points[0, 0]
+        matrix_x[-2, 1] = 2
+        matrix_x[-1, -4] = 6 * points[-1, 0]
+        matrix_x[-1, -3] = 2
+        para = np.dot(np.linalg.inv(matrix_x), matrix_y)
+
+        def func(x):
+            xx = np.zeros((size - 1) * 4)
+            for i in range(1, size):
+                if x <= points[i, 0]:
+                    break
+            xx[4 * (i - 1)] = x ** 3
+            xx[4 * (i - 1) + 1] = x ** 2
+            xx[4 * (i - 1) + 2] = x
+            xx[4 * (i - 1) + 3] = 1
+            return np.dot(para, xx)
+    else:
+        raise NotImplementedError("Unknown fitting method")
+    return func
+
 class Bond:
     def __init__(self, code, initial_date, end_date, issue_price, coupon_rate, coupon_type, coupon_frequency,
                  coupon_period=None, bond_name=None, bond_type=None):

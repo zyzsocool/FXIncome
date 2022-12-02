@@ -76,9 +76,9 @@ class TestBond:
     def test_ytm_zero_coupon(self, global_data):
         bond = global_data['bill']
         assess_date = global_data['date']
-        clean_price = 99.7056
+        clean_price = 99.6504
         assert bond.yield_to_maturity(assess_date, clean_price, YTMCalcType.ZERO) * 100 == \
-               pytest.approx(1.3998, abs=1e-3)
+               pytest.approx(1.3997, abs=1e-2)
 
     def test_accrued_zero_coupon(self, global_data):
         bond = global_data['bill']
