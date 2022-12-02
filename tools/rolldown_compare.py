@@ -65,9 +65,14 @@ if __name__ == '__main__':
                         (asset_df['code'].str.contains('IB'))]
     asset_df['period'] = asset_df['end_date'].apply(lambda x: round((x - date).days / 365))
     asset_df['period2'] = asset_df['end_date'].apply(lambda x: round((x - date).days / 365, 2))
-    #  每个关键期限按交易量大小选出2只代表券，用于描绘收益率曲线
-    asset_df['ranking'] = asset_df[['trading', 'period']].groupby('period').transform(lambda x: x >= maxx(x, 2))
-    asset_df = asset_df[(asset_df['ranking']) & (asset_df['trading'] > 0)].sort_values(['period2'], ignore_index=True)
+    #  每个关键期限按交易量大小和债券活跃度参数筛选代表券，用于描绘收益率曲线
+    activity = parameter_df.at['债券活跃度', '数值'].split(',')
+    activity_rank = int("".join(list(filter(str.isdigit,activity[0]))))
+    activity_trading = float("".join(list(filter(str.isdigit,activity[1]))))
+    asset_df['ranking'] = asset_df[['trading', 'period']].groupby('period'). \
+        transform(lambda x:x >= maxx(x, activity_rank))
+    asset_df = asset_df[(asset_df['ranking']>0) & (asset_df['trading'] >= activity_trading)]. \
+        sort_values(['period2'], ignore_index=True)
     yield_df = asset_df.iloc[:, 10:]
     #  构造收益率曲线
     curve_dot = yield_df[['period2', 'ytm']].to_numpy()
