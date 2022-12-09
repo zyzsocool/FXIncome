@@ -123,6 +123,7 @@ def get_curve(points, type):
         raise NotImplementedError("Unknown fitting method")
     return func
 
+
 class Bond:
     def __init__(self, code, initial_date, end_date, issue_price, coupon_rate, coupon_type, coupon_frequency,
                  coupon_period=None, bond_name=None, bond_type=None):
@@ -162,20 +163,26 @@ class Bond:
             coupon = self.coupon_rate / self.coupon_frequency
             coupon_months = int(12 / self.coupon_frequency)  # 每隔多少个月付息一次
             coupon_times = int(self.coupon_frequency * (self.coupon_period))  # 总付息次数
-            cashflow_df = cashflow_df.append([{'date': self.initial_date, 'cash': -self.face_value}], ignore_index=True)
+            new_cf = pd.DataFrame({'date': [self.initial_date], 'cash': [-self.face_value]})
+            cashflow_df = pd.concat([cashflow_df, new_cf], ignore_index=True)
             for i in range(coupon_times - 1):
                 date = self.initial_date + relativedelta(months=coupon_months * (i + 1))
-                cashflow_df = cashflow_df.append([{'date': date, 'cash': coupon}], ignore_index=True)
-            cashflow_df = cashflow_df.append([{'date': self.end_date, 'cash': self.face_value + coupon}],
-                                             ignore_index=True)
+                new_cf = pd.DataFrame({'date': [date], 'cash': [coupon]})
+                cashflow_df = pd.concat([cashflow_df, new_cf], ignore_index=True)
+            new_cf = pd.DataFrame({'date': [self.end_date], 'cash': [self.face_value + coupon]})
+            cashflow_df = pd.concat([cashflow_df, new_cf], ignore_index=True)
         elif self.coupon_type == COUPON_TYPE.ZERO:
-            cashflow_df = cashflow_df.append([{'date': self.initial_date, 'cash': -self.issue_price}],
-                                             ignore_index=True)
-            cashflow_df = cashflow_df.append([{'date': self.end_date, 'cash': self.face_value}], ignore_index=True)
+            new_cf = pd.DataFrame({
+                'date': [self.initial_date, self.end_date],
+                'cash': [-self.issue_price, self.face_value]
+            })
+            cashflow_df = pd.concat([cashflow_df, new_cf], ignore_index=True)
         elif self.coupon_type == COUPON_TYPE.DUE:
-            cashflow_df = cashflow_df.append([{'date': self.initial_date, 'cash': -self.face_value}], ignore_index=True)
-            cashflow_df = cashflow_df.append([{'date': self.end_date, 'cash': self.coupon_rate + self.face_value}],
-                                             ignore_index=True)
+            new_cf = pd.DataFrame({
+                'date': [self.initial_date, self.end_date],
+                'cash': [-self.face_value, self.coupon_rate + self.face_value]
+            })
+            cashflow_df = pd.concat([cashflow_df, new_cf], ignore_index=True)
         else:
             raise NotImplementedError("Unknown COUPON_TYPE")
         return cashflow_df

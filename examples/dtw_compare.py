@@ -1,4 +1,6 @@
 import datetime
+import random
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -107,14 +109,11 @@ def random_period(df: pd.DataFrame, num: int, length: int):
         length (int): the fixed length of each period
 
     Returns:
-        df_slices (list): A list of Dataframes, each of which is a subset of the whole period
+        A list of Dataframes, each of which is a subset of the whole period
     """
-    df_slices = []
-    for _ in range(num):
-        left = randint(0, len(df) - length)
-        df_slices.append(df.iloc[left: left + length])
-
-    return df_slices
+    #  Randomly select start dates without replacement.
+    starts = random.sample(range(0, len(df) - length), num)
+    return [df.iloc[start: start + length] for start in starts]
 
 
 def calc_dtw(periods: list[pd.DataFrame]):
@@ -127,8 +126,15 @@ def calc_dtw(periods: list[pd.DataFrame]):
         The matrix is a square, with shape of (num of periods, num of periods)
         Index and column names of the returned matrix dataframe are like 'start_date-end_date'.
     """
-    periods = normalize(periods)
-    names = [p.iloc[0].date.strftime('%Y%m%d') + '_' + p.iloc[-1].date.strftime('%Y%m%d') for p in periods]
+    ori_periods = normalize(periods)
+    periods = []
+    names = []
+    #  Make sure no duplicated periods.
+    for p in ori_periods:
+        name = p.iloc[0].date.strftime('%Y%m%d') + '_' + p.iloc[-1].date.strftime('%Y%m%d')
+        if name not in names:
+            names.append(name)
+            periods.append(p)
     distances = []
     for x_df, y_df in itertools.product(periods, periods):
         #  Assuming trade days are equally distributed in both two periods, we can ignore the timesteps.
@@ -141,14 +147,14 @@ def calc_dtw(periods: list[pd.DataFrame]):
     return df_matrix
 
 
-def show_closest_periods(dist_matrix: pd.DataFrame, periods: list[pd.DataFrame], nclosest: int):
+def show_closest_periods(dist_matrix: pd.DataFrame, periods: list[pd.DataFrame], nclosest: int, path: str):
     """
 
     Args:
         dist_matrix (Dataframe): Distances between pairs of timeseries.
         periods (list[DataFrame]): Timeseries input for distance calculation.
         nclosest (int): This function will find the top n closest pair of timeseries and draw their figures.
-
+        path (str): Location where the generated images will be stored.
     Returns:
         A heatmap of distance matrix.
         N figures for the pairs of timeseries.
@@ -165,7 +171,7 @@ def show_closest_periods(dist_matrix: pd.DataFrame, periods: list[pd.DataFrame],
         dates = name2.split('_')
         start2 = datetime.datetime.strptime(dates[0], '%Y%m%d')
         end2 = datetime.datetime.strptime(dates[1], '%Y%m%d')
-        distance = dist_matrix.loc[name1, name2]
+        distance = dist_matrix.at[name1, name2]
         for p in periods:
             if p.iloc[0].date == start1 and p.iloc[-1].date == end1:
                 period_1 = p
@@ -179,16 +185,16 @@ def show_closest_periods(dist_matrix: pd.DataFrame, periods: list[pd.DataFrame],
         ax.plot(range(len(period_1)), period_1.close, label=f'{name1}')
         ax.plot(range(len(period_2)), period_2.close, label=f'{name2}')
         ax.grid(axis="y")
-        ax.set_ylim(0.5, 1)
-        ax.set_title("HS300 Drawdown")
+        ax.set_ylim(0.6, 1.4)
+        ax.set_title("HS300 Periods")
         ax.set_xlabel("Trading Days")
         ax.set_ylabel("Price")
         ax.legend()
-        plt.savefig(f'./results/images/{distance:.2f}_{name1}_{name2}.jpg', dpi=600)
+        plt.savefig(f'{path}{distance:.2f}_{name1} vs {name2}.jpg', dpi=600)
         plt.close()
     plt.figure(figsize=(20, 20))
     sns.heatmap(dist_matrix, square=True, annot=True, cmap='Blues')
-    plt.savefig('./results/images/matrix.jpg', dpi=600)
+    plt.savefig(f'{path}matrix.jpg', dpi=600)
     plt.close()
 
 
@@ -199,34 +205,32 @@ def main():
     du_threshold = 0.2
     drawdowns = []
     drawups = []
-    samples = split_period(df, num=20)
 
+    samples = split_period(df, num=20)
     for sample in samples:
         max_dd, df_dd = drawdown(sample)
-        start = df_dd.iloc[0].date.strftime('%Y%m%d')
-        end = df_dd.iloc[-1].date.strftime('%Y%m%d')
         if max_dd < dd_threshold:
-            # df_dd.plot(x='date', y='close')
-            # plt.savefig(f'./results/images/{max_dd:.2f}_{start}_{end}.jpg', dpi=600)
             drawdowns.append(df_dd)
         max_du, df_du = drawup(sample)
-        start = df_du.iloc[0].date.strftime('%Y%m%d')
-        end = df_du.iloc[-1].date.strftime('%Y%m%d')
         if max_du > du_threshold:
-            # df_du.plot(x='date', y='close')
-            # plt.savefig(f'./results/images/{max_du:.2f}_{start}_{end}.jpg', dpi=600)
             drawups.append(df_du)
-        plt.close()
     dist_matrix = calc_dtw(drawdowns)
-    show_closest_periods(dist_matrix, normalize(drawdowns), 6)
-    a = [1,2,3]
-    calc_dtw(a)
+    show_closest_periods(dist_matrix, normalize(drawdowns), 10, './results/images/drawdowns/')
+    dist_matrix = calc_dtw(drawups)
+    show_closest_periods(dist_matrix, normalize(drawups), 20, './results/images/drawups/')
 
-    # samples = random_period(df, num=1000, length=100)
+    # samples = random_period(df, num=100, length=100)
     # for sample in samples:
     #     max_dd, df_dd = drawdown(sample)
-    #     if max_dd < -0.3:
-    #         print(max_dd, df_dd.iloc[0].date, df_dd.iloc[-1].date)
+    #     if max_dd < dd_threshold:
+    #         drawdowns.append(df_dd)
+    #     max_dd, df_du = drawup(sample)
+    #     if max_dd > du_threshold:
+    #         drawups.append(df_du)
+    # dist_matrix = calc_dtw(drawdowns)
+    # show_closest_periods(dist_matrix, normalize(drawdowns), 10, './results/images/drawdowns/')
+    # dist_matrix = calc_dtw(drawups)
+    # show_closest_periods(dist_matrix, normalize(drawups), 10, './results/images/drawups/')
 
 
 if __name__ == '__main__':
