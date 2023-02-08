@@ -61,7 +61,8 @@ if __name__ == '__main__':
     asset_df['end_date'] = pd.to_datetime(asset_df['end_date'])
     #  按照券种、交易量排名等筛选债券
     asset_df = asset_df[(asset_df['bond_type'].isin(bond_type_need)) &
-                        (asset_df['code'].str.contains('IB'))]
+                        (asset_df['code'].str.contains('IB')) &
+                        (asset_df['code'].str.len() <= 9)]
     asset_df['period'] = asset_df['end_date'].apply(lambda x: round((x - date).days / 365))
     asset_df['period2'] = asset_df['end_date'].apply(lambda x: round((x - date).days / 365, 2))
     #  每个关键期限按交易量大小和债券活跃度参数筛选代表券，用于描绘收益率曲线
