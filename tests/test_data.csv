@@ -1,0 +1,5 @@
+function,begin,end,ytm_open_short,ytm_open_long,ytm_close_short,ytm_close_long,lend_rate,rf,spread_predict,days_required,profit_input,profit,profit_yield
+profit,2023/2/8,2023/6/17,0.028,0.029,0.02855,0.029,0.0055,0.015,,,,37890.40587,0.002144191
+profit,2023/2/8,2023/6/17,0.028,0.029,0.02855,0.029,0.0055,0,,,,54557.36931,0.003087362
+profit_reach_time,2023/2/8,2023/6/17,0.028,0.029,,,0.0055,0,7.5,131,0,148.3852191,
+profit_reach_bp,2023/2/8,2023/6/17,0.028,0.029,,,0.0055,0,7.5,132,-138.2421114,,
