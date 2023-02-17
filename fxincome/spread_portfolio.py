@@ -96,6 +96,7 @@ class SpreadPortfolio:
         by half of the change of spread.
         If both of ytm_close_short and ytm_close_long are given (not 0),
         those values will be used to calculate, and the spread_predict will be ignored.
+        If profit is always < profit_required, last day's profit is closest_profit and max_days is days_required.
         Args:
             bond_short(Bond): A FinancePy Bond to short(expects its ytm to increase).
                               This bond's face_amount decides the scale of profit.
@@ -111,7 +112,6 @@ class SpreadPortfolio:
             ytm_close_long(float): Default as 0. If not given, spread_predict will be used.
             max_days: Maximum days we can wait. max_days = last day - start day.
             rf: If set to zero, cash flows during the period will not affect the profit.
-
         Returns:
             closest_profit(float): The profit on the end day when the position is closed.
             days_required(float): Maximum days we can wait until the predicted spread is reached and required profit
@@ -134,11 +134,10 @@ class SpreadPortfolio:
                                                            end_date, rf)
                 days_required = i - 1
                 break
-            prev_profit = profit
-        # On the last day, check if it reaches the required profit.
-        if prev_profit >= profit_required:
-            closest_profit = prev_profit
-            days_required = max_days
+            # If profit is always < profit_required, last day's profit is closest_profit and max_days is days_required.
+            else:
+                closest_profit = profit
+                days_required = max_days
 
         return closest_profit, days_required
 
@@ -166,7 +165,6 @@ class SpreadPortfolio:
             ytm_open_long(float): Ytm to open a long position of a Bond (Ytm to buy the bond).
             days_after(int): End day = start day + days_after.
             rf: If set to zero, cash flows during the period will not affect the profit.
-
         Returns:
             spread(float): The exact final spread to earn the required profit. Its unit is BP.
             Assume the ytm_close_short and ytm_close_long increases/decreases by half of the change of spread.
