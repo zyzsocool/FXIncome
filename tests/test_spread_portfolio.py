@@ -2,11 +2,9 @@
 
 from financepy.utils import *
 from financepy.products.bonds import *
-import numpy as np
 import pandas as pd
 import pytest
-from fxincome.spread_portfolio import SpreadPortfolio
-import datetime
+from fxincome.spread.spread_portfolio import SpreadPortfolio
 
 
 class TestSpreadPortfolio:
