@@ -176,6 +176,7 @@ class TBOND_PARAM:
 
     LABELS = ['target']
 
+
 class MTM_PARAM:
     """
     Parameters for Mark to Market estimated value
@@ -251,13 +252,32 @@ class MTM_PARAM:
 
 class SPREAD:
     SAVE_PATH = 'd:/ProjectRicequant/fxincome/spread/'
+    # Bonds must be in ascending order of issue date
     CDB_CODES = [
-        "180210.IB", "190205.IB",
-        "190210.IB", "190215.IB",
-        "200205.IB", "200210.IB",
-        "200215.IB", "210205.IB",
-        "210210.IB", "210215.IB",
-        "220205.IB", "220210.IB",
-        "220215.IB", "220220.IB",
-        "230205.IB"
+        "180210", "190205",
+        "190210", "190215",
+        "200205", "200210",
+        "200215", "210205",
+        "210210", "210215",
+        "220205", "220210",
+        "220215", "220220",
+        "230205"
     ]
+
+    ALL_FEATS = [
+        'MONTH',  # month of the year
+        'DAYS_SINCE_IPO',  # days since first trading date
+        'IPO_DATE',  # first trading date
+        'COUPON',
+        'VOL',
+        'OUT_BAL',  # outstanding balance
+        'YTM'
+    ]
+
+    @staticmethod
+    def feature_name(code: str, f_name: str, days_back: int = 0, ):
+        if code not in SPREAD.CDB_CODES:
+            raise ValueError(f"Code {code} not in CDB_CODES")
+        col_names = []
+        for i in range(days_back):
+            col_names.append(f'{code}_{f_name}')
