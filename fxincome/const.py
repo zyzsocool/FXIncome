@@ -264,20 +264,16 @@ class SPREAD:
         "230205"
     ]
 
-    ALL_FEATS = [
+    FIXED_FEATS = [
         'MONTH',  # month of the year
-        'DAYS_SINCE_IPO',  # days since first trading date
-        'IPO_DATE',  # first trading date
-        'COUPON',
-        'VOL',
-        'OUT_BAL',  # outstanding balance
-        'YTM'
+        'DAYS_SINCE_LEG2_IPO',  # days since first trading date of leg2
     ]
 
-    @staticmethod
-    def feature_name(code: str, f_name: str, days_back: int = 0, ):
-        if code not in SPREAD.CDB_CODES:
-            raise ValueError(f"Code {code} not in CDB_CODES")
-        col_names = []
-        for i in range(days_back):
-            col_names.append(f'{code}_{f_name}')
+    #  Features that are calculated according to days_back parameter
+    DYNAMIC_FEATS = [
+        'SPREAD',  # leg2 ytm - leg1 ytm
+        'VOL_DIFF',  # leg2 vol - leg1 vol
+        'OUT_BAL_DIFF',  # leg2 outstanding balance - leg1 outstanding balance
+    ]
+
+
