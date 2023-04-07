@@ -139,6 +139,7 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     df.to_csv(SPREAD.SAVE_PATH + f'{leg1_code}_{leg2_code}_FE.csv', index=False, encoding='utf-8')
     # Ratio: positive samples / total samples
     logger.info(f'Label 1 ratio: {df.LABEL.sum() / len(df):.2f}')
+    df = df.drop(columns=['DATE'])
     return df
 
 

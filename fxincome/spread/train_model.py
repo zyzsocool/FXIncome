@@ -13,49 +13,84 @@ from optuna.samplers import TPESampler
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import accuracy_score, roc_auc_score, recall_score, confusion_matrix
 
-# train and validation set
 days_back = 5
 n_samples = 190
+days_forward = 10
+spread_threshold = 0.01
+
 leg1_code = "180210"
 leg2_code = "190205"
-df_target = preprocess_data.feature_engineering(leg1_code, leg2_code, days_back, n_samples)
-for i in range(SPREAD.CDB_CODES.index(leg2_code), 10):
-    df_target = pd.concat([df_target,
-                           preprocess_data.feature_engineering(SPREAD.CDB_CODES[i], SPREAD.CDB_CODES[i + 1], days_back,
-                                                               n_samples)], axis=0)
-days_forward = 20
-Y = preprocess_data.target_20D_0bp(leg1_code, leg2_code, days_back, n_samples, days_forward)
-for i in range(SPREAD.CDB_CODES.index(leg2_code), 10):
-    Y = pd.concat([Y, preprocess_data.target_20D_0bp(SPREAD.CDB_CODES[i], SPREAD.CDB_CODES[i + 1], days_back, n_samples,
-                                                     days_forward)], axis=0)
 
-# test set
-n_samples = 135
+# train and validation set, from 180210_190205 to 210215_220205
+df_train_val = preprocess_data.feature_engineering(leg1_code, leg2_code, days_back, n_samples,
+                                                   days_forward, spread_threshold)
+# from 190205_190210 to 210215_220205
+for i in range(SPREAD.CDB_CODES.index(leg2_code), 10):
+    df_train_val = pd.concat([df_train_val,
+                              preprocess_data.feature_engineering(SPREAD.CDB_CODES[i], SPREAD.CDB_CODES[i + 1],
+                                                                  days_back, n_samples,
+                                                                  days_forward, spread_threshold)], axis=0)
+
+# test set, from 220205_220210 to 220210_220215
 leg1_code = '220205'
 leg2_code = '220210'
-df_test = preprocess_data.feature_engineering(leg1_code, leg2_code, days_back, n_samples)
+df_test = preprocess_data.feature_engineering(leg1_code, leg2_code, days_back, n_samples,
+                                              days_forward, spread_threshold)
 leg1_code = '220210'
 leg2_code = '220215'
-df_test = pd.concat([df_test, preprocess_data.feature_engineering(leg1_code, leg2_code, days_back, n_samples)])
-leg1_code = '220205'
-leg2_code = '220210'
-Y_test = preprocess_data.target_20D_0bp(leg1_code, leg2_code, days_back, n_samples, days_forward)
-leg1_code = '220210'
-leg2_code = '220215'
-Y_test = pd.concat([Y_test, preprocess_data.target_20D_0bp(leg1_code, leg2_code, days_back, n_samples, days_forward)])
+df_test = pd.concat([df_test, preprocess_data.feature_engineering(leg1_code, leg2_code, days_back, n_samples,
+                                                                  days_forward, spread_threshold)], axis=0)
 
-random_seed = 10
+logger.info(f"Number of rows with null values in train and validation set: {df_train_val.isna().any(axis=1).sum()}")
+logger.info(f"Number of rows with null values in test set: {df_test.isna().any(axis=1).sum()}")
+df_train_val = df_train_val.dropna()
+df_test = df_test.dropna()
 
-X_train, X_test, y_train, y_test = train_test_split(df_target.drop(columns=['DATE'])
-                                                    , Y.drop(columns=['DATE'])
-                                                    , random_state=random_seed
-                                                    , test_size=0.2)
+
+def split_stratify_train(data: pd.Dataframe, label_ratio_low: float, label_ratio_high: float, test_size=0.2):
+    """
+    Split data into train and test set.
+    Train set is split with stratify label ratio between label_ratio_low and label_ratio_high.
+    Args:
+        data(Dataframe): Dataframe to be split. Must contain a column named 'LABEL'.
+        label_ratio_low(float): Lower bound of label ratio in train set.
+        label_ratio_high(float: Upper bound of label ratio in train set.
+        test_size: Ratio of test set.
+
+    Returns:
+        X_train(Dataframe): Train set features.
+        X_test(Dataframe): Test set features.
+        y_train(Dataframe): Train set labels.
+        y_test(Dataframe): Test set labels.
+    """
+    while True:
+        X_train, X_test, y_train, y_test = train_test_split(data.drop(columns=['LABEL']), data['LABEL'],
+                                                            test_size=test_size)
+        if (y_train.sum() / len(y_train) >= label_ratio_low) and (y_train.sum() / len(y_train) <= label_ratio_high):
+            break
+    logger.info(f'Label 1 ratio of train set after split:{y_train.sum() / len(y_train)}')
+    return X_train, X_test, y_train, y_test
+
+
+X_train, X_val, y_train, y_val = split_stratify_train(df_train_val, 0.4, 0.6)
+
+
+def cv_spilt(data, i):
+    df_1 = df_train_val[data['LABEL'] == 1]
+    df_0 = df_train_val[data['LABEL'] == 0]
+    df_1_split = np.array_split(df_1, i)
+    df_0_split = np.array_split(df_0, i)
+    df_total = []
+    for i in range(0, i):
+        df_total.append(pd.concat([df_1_split[i], df_0_split[i]]))
+    return df_total
+
 
 # GridSampler：网格调参
 # RandomSampler：随机调参
 # TPESampler：贝叶斯调参
 # seed：搜索超参数的随机数种子(固定一个整数即可)
-sampler = TPESampler(seed=random_seed)
+sampler = TPESampler(seed=10)
 
 
 # 定义Objective
