@@ -27,9 +27,5 @@ import matplotlib.pyplot as plt
 
 import logging
 
+logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger()
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel(logging.INFO)

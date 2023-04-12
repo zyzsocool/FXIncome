@@ -9,15 +9,22 @@ from fxincome import logger
 w.start()
 
 
-def dynamic_feature_names(f_name: str, days_back: int = 0):
+def dynamic_feature_names(f_name: str, days_back: int = 0, avg: bool = False) -> list[str]:
+    """
+    If avg is False, return ['f_name', 'f_name_t-1', 'f_name_t-2', ..., 'f_name_t-{days_back}']
+    If avg is True, return ['f_name', 'f_name_AVG_{days_back}']
+    """
     feature_names = [f_name]
-    for i in range(1, days_back + 1):
-        feature_names.append(f'{f_name}_t-{i}')
+    if not avg:
+        for i in range(1, days_back + 1):
+            feature_names.append(f'{f_name}_t-{i}')
+    else:
+        feature_names.append(f'{f_name}_AVG_{days_back}')
     return feature_names
 
 
 def download_data(start_date: datetime.date = datetime.date(2019, 1, 1),
-                  end_date: datetime.date = datetime.date(2023, 3, 3)):
+                  end_date: datetime.date = datetime.date(2023, 4, 11)):
     for code in SPREAD.CDB_CODES:
         wind_code = code + '.IB'
         w_data = w.wsd(wind_code,
@@ -47,7 +54,7 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     Labels:
     If spread_threshold is POSITIVE, assuming spread is wider, then:
         during the period between T and T + days_forward,
-        if any day's spread - spread_T > spread_threshold, then label = 1.
+        if any day's spread - spread_T >= spread_threshold, then label = 1.
     If spread_threshold is NEGATIVE, assuming spread is narrower, then:
         during the period between T and T + days_forward,
         if any day's spread - spread_T < spread_threshold, then label = 1.
@@ -68,7 +75,7 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
                         Its sign determines whether spread is wider or narrower.
                         If  POSITIVE, assuming spread is wider, then:
                             during the period between T and T + days_forward,
-                            if any day's spread - spread_T > spread_threshold, then label = 1.
+                            if any day's spread - spread_T >= spread_threshold, then label = 1.
                         If NEGATIVE, assuming spread is narrower, then:
                             during the period between T and T + days_forward,
                             if any day's spread - spread_T < spread_threshold, then label = 1.
@@ -94,6 +101,12 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     df['SPREAD'] = df.YTM_LEG2 - df.YTM_LEG1
     df['VOL_DIFF'] = df.VOL_LEG2 - df.VOL_LEG1
     df['OUT_BAL_DIFF'] = df.OUT_BAL_LEG2 - df.OUT_BAL_LEG1
+    #  Mean of past [t-1, t-2... t-days_back] days' YTM difference
+    df[f'SPREAD_AVG_{days_back}'] = df.SPREAD.rolling(days_back, closed='left').mean()
+    # Mean of past [t-1, t-2... t-days_back] days' volume difference
+    df[f'VOL_DIFF_AVG_{days_back}'] = df.VOL_DIFF.rolling(days_back, closed='left').mean()
+    #  Mean of past [t-1, t-2... t-days_back] days' outstanding balance difference
+    df[f'OUT_BAL_DIFF_AVG_{days_back}'] = df.OUT_BAL_DIFF.rolling(days_back, closed='left').mean()
     for i in range(1, days_back + 1):
         df[f'SPREAD_t-{i}'] = df.SPREAD.shift(i)
     for i in range(1, days_back + 1):
@@ -121,7 +134,7 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     if spread_threshold >= 0:  # spread is wider
         df[f'max_in_future'] = df.SPREAD.rolling(
             pd.api.indexers.FixedForwardWindowIndexer(window_size=days_forward + 1)).max()
-        df['LABEL'] = df.apply(lambda row: 1 if (row.max_in_future - row.SPREAD) > spread_threshold else 0,
+        df['LABEL'] = df.apply(lambda row: 1 if (row.max_in_future - row.SPREAD) >= spread_threshold else 0,
                                axis=1)
         df = df.drop(columns=['max_in_future'])
     else:  # spread is narrower
@@ -156,10 +169,10 @@ def select_features(df: pd.DataFrame, days_back: int) -> pd.DataFrame:
     Returns:
         df (Dataframe): One row of this final dataframe has both features and labels for ONE DAY.
     """
-    features = ['DATE', 'MONTH', 'DAYS_SINCE_LEG2_IPO', 'YTM_LEG1', 'YTM_LEG2']
-    features += dynamic_feature_names('SPREAD', days_back=days_back)
-    features += dynamic_feature_names('VOL_DIFF', days_back=days_back)
-    features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back)
+    features = ['DATE', 'DAYS_SINCE_LEG2_IPO', 'YTM_LEG1', 'YTM_LEG2', ]
+    features += dynamic_feature_names('SPREAD', days_back=days_back, avg=False)
+    features += dynamic_feature_names('VOL_DIFF', days_back=days_back, avg=False)
+    features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=False)
     df = df[features]
     return df
 
