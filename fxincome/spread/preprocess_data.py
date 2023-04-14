@@ -169,13 +169,13 @@ def select_features(df: pd.DataFrame, days_back: int) -> pd.DataFrame:
     Returns:
         df (Dataframe): One row of this final dataframe has both features and labels for ONE DAY.
     """
-    features = ['DATE', 'DAYS_SINCE_LEG2_IPO', 'YTM_LEG1', 'YTM_LEG2', ]
-    features += dynamic_feature_names('SPREAD', days_back=days_back, avg=False)
-    features += dynamic_feature_names('VOL_DIFF', days_back=days_back, avg=False)
-    features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=False)
+    features = ['DATE', 'YTM_LEG1', 'YTM_LEG2', 'MONTH']
+    features += dynamic_feature_names('SPREAD', days_back=days_back, avg=True)
+    features += dynamic_feature_names('VOL_DIFF', days_back=days_back, avg=True)
+    features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=True)
     df = df[features]
     return df
 
 
-# download_data()
-feature_engineering('210215', '220205', days_back=5, n_samples=150, days_forward=10, spread_threshold=0.01)
+download_data(start_date=datetime.date(2019, 1, 1), end_date=datetime.date(2023, 4, 13))
+# feature_engineering('210215', '220205', days_back=5, n_samples=150, days_forward=10, spread_threshold=0.01)
