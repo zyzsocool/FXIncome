@@ -1,6 +1,7 @@
 import json, joblib
 import xgboost as xgb
 # import tensorflow.keras as keras
+from typing import Literal, Union
 from dataclasses import dataclass, field
 
 
@@ -35,7 +36,26 @@ class JsonModel:
     JSON_NAME = 'model_attrs.json'
 
     @staticmethod
-    def load_attr(name: str, json_path: str):
+    def save_attr(model: ModelAttr, json_path: str) -> None:
+        """
+        将某个模型对应的要素添加至本地文件，原来的模型要素不会改变。
+            Args:
+                model(ModelAttr): 将要存储的Model要素的对象
+                json_path(str): Json文件的路径
+        """
+        name = model.name
+        with open(json_path + 'model_attrs.json', 'r') as f:
+            model_string = f.read()
+        if not model_string:
+            models = {}
+        else:
+            models = json.loads(model_string)
+        models[name] = model
+        with open(json_path + 'model_attrs.json', 'w') as f:
+            f.write(json.dumps(models, default=lambda x: x.__dict__))
+
+    @staticmethod
+    def load_attr(name: str, json_path: str) -> Union[ModelAttr, None]:
         """
         从本地读取某个模型的要素
             Args:
@@ -58,26 +78,7 @@ class JsonModel:
             return model
 
     @staticmethod
-    def save_attr(model: ModelAttr, json_path: str):
-        """
-        将某个模型对应的features更新至本地文件
-            Args:
-                model(ModelAttr): 将要存储的Model要素的对象
-                json_path(str): Json文件的路径
-        """
-        name = model.name
-        with open(json_path + 'model_attrs.json', 'r') as f:
-            model_string = f.read()
-        if not model_string:
-            models = {}
-        else:
-            models = json.loads(model_string)
-        models[name] = model
-        with open(json_path + 'model_attrs.json', 'w') as f:
-            f.write(json.dumps(models, default=lambda x: x.__dict__))
-
-    @staticmethod
-    def delete_attr(name: str, json_path: str):
+    def delete_attr(name: str, json_path: str) -> None:
         """
         从本地文件中删除某个模型的要素
             Args:
@@ -93,9 +94,8 @@ class JsonModel:
         with open(json_path + 'model_attrs.json', 'w') as f:
             f.write(json.dumps(models, default=lambda x: x.__dict__))
 
-
     @staticmethod
-    def load_plain_models(names: list, json_model_path: str, serialization_type: {'joblib', 'xgb'}):
+    def load_plain_models(names: list, json_model_path: str, serialization_type: Literal['joblib', 'xgb']) -> dict:
         """
         从本地读取某个传统模型的要素和模型
             Args:
@@ -115,7 +115,7 @@ class JsonModel:
                 xgb_model.load_model(json_model_path + attr.name)
                 plain_dict[attr] = xgb_model
             else:
-                raise ValueError('Invalid serialization type.')
+                raise TypeError('Invalid serialization type.')
         return plain_dict
 
     # @staticmethod

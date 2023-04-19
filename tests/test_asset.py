@@ -1,9 +1,9 @@
-from fxincome.asset import Bond
+from fxincome.asset import Bond, get_curve
 from fxincome.const import *
 from datetime import datetime
 import pandas as pd
+import numpy as np
 import pytest
-
 
 
 class TestBond:
@@ -30,7 +30,7 @@ class TestBond:
         bond = global_data['bond']
         assess_date = global_data['date']
         curve_df = global_data['curve']
-        assert bond.curve_to_ytm(assess_date,curve_df) == pytest.approx(2.785)
+        assert bond.curve_to_ytm(assess_date, curve_df) == pytest.approx(2.785)
 
     def test_get_cashflow(self, global_data):
         bond = global_data['bond']
@@ -75,3 +75,41 @@ class TestBond:
         duration = bond.ytm_to_duration(assess_date, ytm, 'Modified')
         dv01 = -dirty_price * duration * 0.0001
         assert pytest.approx(dv01, abs=1e-4) == bond.ytm_to_dv01(global_data['date'], ytm)
+
+
+class TestCurve:
+
+    @pytest.fixture(scope='class')
+    def global_data(self):
+        points = np.array([[0, 1.5855],
+                           [1, 2.3438],
+                           [2, 2.5848],
+                           [3, 2.6617],
+                           [4, 2.7545],
+                           [5, 2.8526],
+                           [6, 2.9594],
+                           [7, 3.0125],
+                           [8, 3.0022],
+                           [9, 2.9863],
+                           [10, 2.9879],
+                           [15, 3.3447],
+                           [20, 3.3764],
+                           [30, 3.5329],
+                           [40, 3.5785],
+                           [50, 3.595]])
+
+        return {'points': points,
+                'linear_point_between': 2.7081,
+                'hermit_point_between': 2.706775,
+                'ytm_3y': 2.6617,
+                'ytm_5y': 2.8526}
+
+    def test_get_curve(self, global_data):
+        linear_fitting = get_curve(global_data['points'], 'LINEAR')
+        hermit_fitting = get_curve(global_data['points'], 'HERMIT')
+        assert global_data['ytm_3y'] == pytest.approx(linear_fitting(3))
+        assert global_data['ytm_3y'] == pytest.approx(hermit_fitting(3))
+        assert global_data['ytm_5y'] == pytest.approx(linear_fitting(5))
+        assert global_data['ytm_5y'] == pytest.approx(hermit_fitting(5))
+        assert global_data['linear_point_between'] == pytest.approx(linear_fitting(3.5))
+        assert global_data['hermit_point_between'] == pytest.approx(hermit_fitting(3.5))
