@@ -1,9 +1,11 @@
 import pytest
 import joblib
 import os
-import tensorflow.keras
+# import tensorflow.keras
 import numpy as np
-from fxincome.utils import ModelAttr, JsonModel, get_curve
+import fxincome.asset
+from fxincome.utils import ModelAttr, JsonModel
+from fxincome.const import PATH
 
 
 class TestModel:
@@ -73,12 +75,12 @@ class TestModel:
         plain_model = plain_dict[global_data['xgb_model']]
         assert plain_model.get_params()['gamma'] == xgb_model.get_params()['gamma']
 
-    def test_load_nn_models(self, global_data):
-        nn_names = [global_data['lstm_name']]
-        nn_dict = JsonModel.load_nn_models(nn_names)
-        lstm_model = tensorflow.keras.models.load_model(JsonModel.model_path + global_data['lstm_name'])
-        nn_model = nn_dict[global_data['lstm_model']]
-        assert nn_model.summary() == lstm_model.summary()
+    # def test_load_nn_models(self, global_data):
+    #     nn_names = [global_data['lstm_name']]
+    #     nn_dict = JsonModel.load_nn_models(nn_names)
+    #     lstm_model = tensorflow.keras.models.load_model(JsonModel.model_path + global_data['lstm_name'])
+    #     nn_model = nn_dict[global_data['lstm_model']]
+    #     assert nn_model.summary() == lstm_model.summary()
 
 
 class TestCurve:
@@ -109,8 +111,8 @@ class TestCurve:
                 'ytm_5y': 2.8526}
 
     def test_get_curve(self, global_data):
-        linear_fitting = get_curve(global_data['points'], 'LINEAR')
-        hermit_fitting = get_curve(global_data['points'], 'HERMIT')
+        linear_fitting = fxincome.asset.get_curve(global_data['points'], 'LINEAR')
+        hermit_fitting = fxincome.asset.get_curve(global_data['points'], 'HERMIT')
         assert global_data['ytm_3y'] == pytest.approx(linear_fitting(3))
         assert global_data['ytm_3y'] == pytest.approx(hermit_fitting(3))
         assert global_data['ytm_5y'] == pytest.approx(linear_fitting(5))

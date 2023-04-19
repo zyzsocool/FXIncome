@@ -7,7 +7,7 @@ import joblib
 import matplotlib.pyplot as plt
 import sklearn as sk
 import xgboost
-from fxincome.const import TBOND_PARAM
+from fxincome.const import TBOND_PARAM, PATH
 from fxincome.ml import tbond_process_data, tbond_model, tbond_nn_predata
 from fxincome import logger
 from fxincome.utils import JsonModel, ModelAttr
@@ -106,7 +106,7 @@ def eval_plain_models(names: list, engineered_df):
         Returns:
             history_result(DataFrame): 'date', 'actual', [每个model预测的'result', 'pred', 'actual', 'down_proba', 'up_proba']
     """
-    models = JsonModel.load_plain_models(names)
+    models = JsonModel.load_plain_models(names, PATH.YTM_MODEL, 'joblib')
     df = engineered_df[['date']]
     names = []
     col_names = ['date']
@@ -263,7 +263,7 @@ def ensemble_pred(plain_names: list, nn_names: list, df, seq_len, weights: list 
                                                 dropna=False)
     df = df.drop(['future', 'target'], axis=1)
     today = df.date.iloc[-1]  # today is pandas.Timestamp
-    plain_models = JsonModel.load_plain_models(plain_names)
+    plain_models = JsonModel.load_plain_models(plain_names, PATH.YTM_MODEL, 'joblib')
     nn_models = JsonModel.load_nn_models(nn_names)
     preds = []
     probas = []

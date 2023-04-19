@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 import datetime
-from fxincome.const import SPREAD
+from fxincome.const import PATH, SPREAD
 from WindPy import w
 from fxincome import logger
 
@@ -34,7 +34,7 @@ def download_data(start_date: datetime.date = datetime.date(2019, 1, 1),
                        "credibility=1")
         df = pd.DataFrame(w_data.Data, index=w_data.Fields, columns=w_data.Times)
         df = df.T
-        output_file = SPREAD.SAVE_PATH + code + '.csv'
+        output_file = PATH.SPREAD_DATA + code + '.csv'
         df.index.name = 'DATE'
         df = df.reset_index()
         df.columns = ['DATE', 'CODE', 'IPO_DATE', 'COUPON', 'CLOSE', 'VOL', 'OUT_BAL', 'YTM']
@@ -86,12 +86,12 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
         raise ValueError('Invalid bond code.')
     elif SPREAD.CDB_CODES.index(leg1_code) > SPREAD.CDB_CODES.index(leg2_code):
         raise ValueError('leg1 must be issued before leg2.')
-    input_file = SPREAD.SAVE_PATH + leg1_code + '.csv'
+    input_file = PATH.SPREAD_DATA + leg1_code + '.csv'
     df_1 = pd.read_csv(input_file, parse_dates=['DATE', 'IPO_DATE']).drop(columns=['CODE'])
-    input_file = SPREAD.SAVE_PATH + leg2_code + '.csv'
+    input_file = PATH.SPREAD_DATA + leg2_code + '.csv'
     df_2 = pd.read_csv(input_file, parse_dates=['DATE', 'IPO_DATE']).drop(columns=['CODE'])
     df = pd.merge(df_1, df_2, on='DATE', how='inner', suffixes=('_LEG1', '_LEG2'))
-    df.to_csv(SPREAD.SAVE_PATH + f'{leg1_code}_{leg2_code}.csv', index=False, encoding='utf-8')
+    df.to_csv(PATH.SPREAD_DATA + f'{leg1_code}_{leg2_code}.csv', index=False, encoding='utf-8')
 
     # Feature Engineeing
     df['MONTH'] = df.DATE.dt.month
@@ -149,7 +149,7 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     # Last sample = leg2's IPO date + days_back + n_samples - 1
     # Only trading days are counted. It's different from calendar days.
     df = df[(df['DATE'] >= first_date)].iloc[days_back:days_back + n_samples]
-    df.to_csv(SPREAD.SAVE_PATH + f'{leg1_code}_{leg2_code}_FE.csv', index=False, encoding='utf-8')
+    df.to_csv(PATH.SPREAD_DATA + f'{leg1_code}_{leg2_code}_FE.csv', index=False, encoding='utf-8')
     # Ratio: positive samples / total samples
     logger.info(f'Label 1 ratio: {df.LABEL.sum() / len(df):.2f}')
     df = df.drop(columns=['DATE'])
@@ -169,10 +169,10 @@ def select_features(df: pd.DataFrame, days_back: int) -> pd.DataFrame:
     Returns:
         df (Dataframe): One row of this final dataframe has both features and labels for ONE DAY.
     """
-    features = ['DATE', 'YTM_LEG1', 'YTM_LEG2', 'MONTH']
-    features += dynamic_feature_names('SPREAD', days_back=days_back, avg=True)
+    features = ['DATE', 'YTM_LEG1', 'YTM_LEG2']
+    features += dynamic_feature_names('SPREAD', days_back=days_back, avg=False)
     features += dynamic_feature_names('VOL_DIFF', days_back=days_back, avg=True)
-    features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=True)
+    features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=False)
     df = df[features]
     return df
 

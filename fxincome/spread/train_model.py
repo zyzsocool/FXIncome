@@ -5,14 +5,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
+import json
+
 from fxincome import logger
-from fxincome.const import SPREAD
+from fxincome.const import PATH, SPREAD
 from fxincome.spread import preprocess_data
 import xgboost as xgb
 import optuna
 from optuna.samplers import TPESampler
 from sklearn.model_selection import train_test_split, RandomizedSearchCV
-from sklearn.metrics import accuracy_score, roc_auc_score, recall_score, confusion_matrix, classification_report
+from sklearn.metrics import classification_report
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 
 
 def split_stratify_train(data: pd.DataFrame, label_ratio_low: float, label_ratio_high: float, test_size=0.2):
@@ -62,7 +68,8 @@ def plot_graph(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFram
     plt.show()
 
 
-def generate_dataset(days_back: int, n_samples: int, days_forward: int, spread_threshold: float, last_n_for_test: int = 3):
+def generate_dataset(days_back: int, n_samples: int, days_forward: int, spread_threshold: float,
+                     last_n_for_test: int = 3):
     """
     Generate dataset for training and testing. Training set is yet to be split into train and validation set.
     Args:
@@ -118,8 +125,8 @@ def generate_dataset(days_back: int, n_samples: int, days_forward: int, spread_t
     df_train_val = df_train_val.dropna()
     df_test = df_test.dropna()
     logger.info(f"Test samples: {len(df_test)}, Test ratio: {len(df_test) / (len(df_train_val) + len(df_test)):.4f}")
-    df_train_val.to_csv(SPREAD.SAVE_PATH + 'train_samples.csv', index=False, encoding='utf-8')
-    df_test.to_csv(SPREAD.SAVE_PATH + 'test_samples.csv', index=False, encoding='utf-8')
+    df_train_val.to_csv(PATH.SPREAD_DATA + 'train_samples.csv', index=False, encoding='utf-8')
+    df_test.to_csv(PATH.SPREAD_DATA + 'test_samples.csv', index=False, encoding='utf-8')
     train_X = df_train_val.drop(columns=['LABEL'])
     train_Y = df_train_val['LABEL']
     test_X = df_test.drop(columns=['LABEL'])
@@ -155,16 +162,55 @@ def xgb_scikit_random_train(train_X, train_Y, test_X, test_Y):
     xgb_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=n_iter,
                                     return_train_score=True, n_jobs=-1, pre_dispatch=64)
     xgb_search.fit(x_train, y_train, eval_set=[(x_val, y_val)], verbose=False)
-    best_xgb = xgb_search.best_estimator_
-    test_score, train_score, val_score = report_model(best_xgb, test_X, test_Y, x_train, y_train, x_val, y_val)
+    model = xgb_search.best_estimator_
+    test_score, train_score, val_score = report_model(model, test_X, test_Y, x_train, y_train, x_val, y_val)
 
-    return best_xgb, f"{test_score}_XGB_{datetime.datetime.now():%Y%m%d_%H%M}"
+    return model, f"spread_{test_score}_XGB_{datetime.datetime.now():%Y%m%d_%H%M}"
+
+
+def lr_train(train_X, train_Y, test_X, test_Y):
+    logger.info(f"Train size: {len(train_X)}, Test size: {len(test_X)}")
+    clf = Pipeline([
+        ('scaler', StandardScaler()),
+        ('logistic', LogisticRegression(solver='liblinear', max_iter=500))
+    ])
+    param_dist = {
+        'logistic__C': stats.loguniform(1e-4, 10),
+        'logistic__penalty': ['l1', 'l2'],
+    }
+    lr_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=100, n_jobs=-1, pre_dispatch=64)
+    lr_search.fit(train_X, train_Y)
+    model = lr_search.best_estimator_
+    x_train, x_val, y_train, y_val = train_test_split(train_X, train_Y, test_size=0.1)
+    test_score, train_score, val_score = report_model(model, test_X, test_Y, x_train, y_train, x_val, y_val)
+    return model, f"spread_{test_score}_LR_{datetime.datetime.now():%Y%m%d_%H%M}"
+
+
+def svm_train(train_X, train_Y, test_X, test_Y):
+    logger.info(f"Train size: {len(train_X)}, Test size: {len(test_X)}")
+    clf = Pipeline([
+        ('scaler', StandardScaler()),
+        ('svm', SVC(probability=True))
+    ])
+    param_dist = {
+        'svm__C': stats.loguniform(1e-4, 10),
+        'svm__kernel': ['poly', 'rbf', 'sigmoid'],
+        'svm__degree': stats.randint(1, 5)
+    }
+    svm_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=200, n_jobs=-1, pre_dispatch=64)
+    svm_search.fit(train_X, train_Y)
+    model = svm_search.best_estimator_
+    x_train, x_val, y_train, y_val = train_test_split(train_X, train_Y, test_size=0.1)
+    test_score, train_score, val_score = report_model(model, test_X, test_Y, x_train, y_train, x_val, y_val)
+    return model, f"spread_{test_score}_SVM_{datetime.datetime.now():%Y%m%d_%H%M}"
 
 
 def report_model(model, test_X, test_Y, train_X, train_Y, val_X, val_Y):
     params = ['n_estimators', 'max_depth', 'min_child_weight', 'gamma', 'subsample', 'colsample_bytree', 'alpha',
               'lambda', 'learning_rate', 'scale_pos_weight', 'booster', 'objective', 'eval_metric',
-              'early_stopping_rounds']
+              'early_stopping_rounds'] + \
+             ['logistic__C', 'logistic__penalty', 'logistic__class_weight'] + \
+             ['svm__C', 'svm__kernel', 'svm__class_weight', 'svm__degree']
     #  model.get_params() returns a dict of all parameters. Only print the ones we care about.
     best_params = [f'{param}: {value}' for param, value in model.get_params().items() if param in params]
     logger.info("Model parameters: ")
@@ -176,10 +222,11 @@ def report_model(model, test_X, test_Y, train_X, train_Y, val_X, val_Y):
     logger.info("Test report: ")
     print(classification_report(test_Y, test_pred))
     logger.info(f"Train score is: {train_score:.4f}, Val score is: {val_score:.4f}, Test score is: {model_score:.4f}")
-    logger.info("Feature importances")
-    for f_name, score in sorted(zip(test_X.columns, model.feature_importances_), key=lambda x: x[1],
+    if hasattr(model, 'feature_importances_'):
+        logger.info("Feature importances")
+        for f_name, score in sorted(zip(test_X.columns, model.feature_importances_), key=lambda x: x[1],
                                 reverse=True):
-        logger.info(f"{f_name}, {float(score):.2f}")
+            logger.info(f"{f_name}, {float(score):.2f}")
     plot_graph(train_X, train_Y, test_X, test_Y, model)
     return round(model_score, 3), train_score, val_score
 
@@ -188,12 +235,21 @@ def main():
     days_back = 5
     n_samples = 190
     days_forward = 10
-    spread_threshold = 0.01
+    spread_threshold = -0.01
     last_n_bonds_for_test = 3
 
     train_X, train_Y, test_X, test_Y = generate_dataset(days_back, n_samples, days_forward, spread_threshold,
                                                         last_n_bonds_for_test)
     model, name = xgb_scikit_random_train(train_X, train_Y, test_X, test_Y)
+    model.get_booster().dump_model(PATH.SPREAD_MODEL + f'{name}_trees.txt')
+    config = model.get_booster().save_config()
+    #  save a string as a json file.
+    with open(PATH.SPREAD_MODEL + f'{name}_config.json', 'w') as f:
+        json.dump(config, f)
+    model.save_model(PATH.SPREAD_MODEL + f'{name}.json')
+
+    # model, name = lr_train(train_X, train_Y, test_X, test_Y)
+    # model, name = svm_train(train_X, train_Y, test_X, test_Y)
 
 
 if __name__ == '__main__':

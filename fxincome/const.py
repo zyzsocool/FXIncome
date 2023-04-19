@@ -1,4 +1,8 @@
-from enum import Enum, EnumMeta
+class PATH:
+    MAIN = 'd:/ProjectRicequant/fxincome/'
+    YTM_MODEL = MAIN + 'model/ytm/'
+    SPREAD_DATA = MAIN + 'spread/'
+    SPREAD_MODEL = MAIN + 'model/spread/'
 
 
 class COUPON_TYPE:
@@ -251,7 +255,6 @@ class MTM_PARAM:
 
 
 class SPREAD:
-    SAVE_PATH = 'd:/ProjectRicequant/fxincome/spread/'
     # Bonds must be in ascending order of issue date
     CDB_CODES = [
         "180210", "190205",
@@ -274,5 +277,3 @@ class SPREAD:
         'VOL_DIFF',  # leg2 vol - leg1 vol
         'OUT_BAL_DIFF',  # leg2 outstanding balance - leg1 outstanding balance
     ]
-
-
