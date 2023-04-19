@@ -1,3 +1,5 @@
 /tools/result/
+/tools/*.xlsx
 /examples/results/
 /fxincome/spread/myeasylog.log
+
