@@ -240,15 +240,16 @@ def main():
 
     train_X, train_Y, test_X, test_Y = generate_dataset(days_back, n_samples, days_forward, spread_threshold,
                                                         last_n_bonds_for_test)
-    model, name = xgb_scikit_random_train(train_X, train_Y, test_X, test_Y)
-    model.get_booster().dump_model(PATH.SPREAD_MODEL + f'{name}_trees.txt')
-    config = model.get_booster().save_config()
-    #  save a string as a json file.
-    with open(PATH.SPREAD_MODEL + f'{name}_config.json', 'w') as f:
-        json.dump(config, f)
-    model.save_model(PATH.SPREAD_MODEL + f'{name}.json')
+    # model, name = xgb_scikit_random_train(train_X, train_Y, test_X, test_Y)
+    # model.get_booster().dump_model(PATH.SPREAD_MODEL + f'{name}_trees.txt')
+    # config = model.get_booster().save_config()
+    #
+    # with open(PATH.SPREAD_MODEL + f'{name}_config.json', 'w') as f:
+    #     json.dump(config, f)
+    # model.save_model(PATH.SPREAD_MODEL + f'{name}.json')
 
-    # model, name = lr_train(train_X, train_Y, test_X, test_Y)
+    model, name = lr_train(train_X, train_Y, test_X, test_Y)
+    joblib.dump(model, PATH.SPREAD_MODEL + f'{name}.pkl')
     # model, name = svm_train(train_X, train_Y, test_X, test_Y)
 
 

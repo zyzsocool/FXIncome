@@ -19,12 +19,20 @@ class ModelAttr:
             stats(dict): 训练集做Scaling的统计特征，数据结构为Dict of Dict
                          对于zscore， {feature1: {mean: float, std: float}, feature2: ...}
                          对于minmax， {feature1: {min: float, max: float}, feature2: ...}
+            other(dict): 其他信息，可为空
+                         {  #  以下定义详见： spread.train_model.generate_dataset()
+                         days_back: int,
+                         n_samples: int,
+                         last_n_bonds_for_test: int,
+                         bonds: List[str]
+                         }
     """
     name: str
     features: list = field(compare=False)
     labels: dict = field(compare=False)
     scaled_feats: list = field(default=None, compare=False)
     stats: dict = field(default=None, compare=False)
+    other: dict = field(default=None, compare=False)
 
 
 class JsonModel:
@@ -36,68 +44,68 @@ class JsonModel:
     JSON_NAME = 'model_attrs.json'
 
     @staticmethod
-    def save_attr(model: ModelAttr, json_path: str) -> None:
+    def save_attr(model_attr: ModelAttr, json_file: str) -> None:
         """
         将某个模型对应的要素添加至本地文件，原来的模型要素不会改变。
             Args:
-                model(ModelAttr): 将要存储的Model要素的对象
-                json_path(str): Json文件的路径
+                model_attr(ModelAttr): 将要存储的Model要素的对象
+                json_file(str): Json路径及文件名
         """
-        name = model.name
-        with open(json_path + 'model_attrs.json', 'r') as f:
-            model_string = f.read()
-        if not model_string:
-            models = {}
-        else:
-            models = json.loads(model_string)
-        models[name] = model
-        with open(json_path + 'model_attrs.json', 'w') as f:
-            f.write(json.dumps(models, default=lambda x: x.__dict__))
+        name = model_attr.name
+        #  Save model to json file. New model is added to the existing models.
+        try:
+            with open(json_file, 'r') as f:
+                model_dict = json.load(f)
+        except FileNotFoundError:
+            model_dict = {}
+        model_dict[name] = model_attr.__dict__
+        with open(json_file, 'w') as f:
+            json.dump(model_dict, f)
 
     @staticmethod
-    def load_attr(name: str, json_path: str) -> Union[ModelAttr, None]:
+    def load_attr(name: str, json_file: str) -> Union[ModelAttr, None]:
         """
         从本地读取某个模型的要素
             Args:
                 name(str): 模型名字
-                json_path(str): Json文件的路径
+                json_file(str): Json路径及文件名
             Returns:
-                model(ModelAttr): 以ModelAttr形式返回Model的要素，如没有这个名字的模型，则返回None
+                model_attr(ModelAttr): 以ModelAttr形式返回Model的要素，如没有这个名字的模型，则返回None
         """
-        with open(json_path + JsonModel.JSON_NAME, 'r') as f:
-            model_string = f.read()
-        if not model_string:
-            return None
-        jdict = json.loads(model_string)
         try:
-            model = ModelAttr(name, jdict[name]['features'], jdict[name]['labels'], jdict[name]['scaled_feats'],
-                              jdict[name]['stats'])
-        except:
+            with open(json_file, 'r') as f:
+                model_dict = json.load(f)
+            model = ModelAttr(name,
+                              model_dict[name]['features'],
+                              model_dict[name]['labels'],
+                              model_dict[name]['scaled_feats'],
+                              model_dict[name]['stats'],
+                              model_dict[name]['other'])
+        except (FileNotFoundError, KeyError):
             return None
-        else:
-            return model
+        return model
 
     @staticmethod
-    def delete_attr(name: str, json_path: str) -> None:
+    def delete_attr(name: str, json_file: str) -> None:
         """
         从本地文件中删除某个模型的要素
             Args:
                 name(str): 模型名字
-                json_path(str): Json文件的路径
+                json_file(str): Json全路径及文件名
         """
-        with open(json_path + 'model_attrs.json', 'r') as f:
-            model_string = f.read()
-        if not model_string:
-            return
-        models = json.loads(model_string)
-        models.pop(name)
-        with open(json_path + 'model_attrs.json', 'w') as f:
-            f.write(json.dumps(models, default=lambda x: x.__dict__))
+        try:
+            with open(json_file, 'r') as f:
+                model_dict = json.load(f)
+        except FileNotFoundError:
+            return None
+        model_dict.pop(name)
+        with open(json_file, 'w') as f:
+            json.dump(model_dict, f)
 
     @staticmethod
     def load_plain_models(names: list, json_model_path: str, serialization_type: Literal['joblib', 'xgb']) -> dict:
         """
-        从本地读取某个传统模型的要素和模型
+        从本地读取某个传统模型的要素和模型。返回的plain models都是符合sklearn接口的Classifier。
             Args:
                 names(list): a list of strs. 传统模型名字列表
                 json_model_path(str): Json文件和模型文件的路径，Json和模型必须在同一个文件夹下。
@@ -105,7 +113,7 @@ class JsonModel:
             Returns:
                 plain_dict(dict): key: ModelAttr, value: model
         """
-        attrs = [JsonModel.load_attr(name, json_model_path) for name in names]
+        attrs = [JsonModel.load_attr(name, json_model_path + JsonModel.JSON_NAME) for name in names]
         plain_dict = {}
         for attr in attrs:
             if serialization_type == 'joblib':
@@ -113,7 +121,9 @@ class JsonModel:
             elif serialization_type == 'xgb':
                 xgb_model = xgb.Booster()
                 xgb_model.load_model(json_model_path + attr.name)
-                plain_dict[attr] = xgb_model
+                clf = xgb.XGBClassifier()
+                clf._Booster = xgb_model
+                plain_dict[attr] = clf
             else:
                 raise TypeError('Invalid serialization type.')
         return plain_dict

@@ -44,7 +44,7 @@ def download_data(start_date: datetime.date = datetime.date(2019, 1, 1),
 
 
 def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_samples: int,
-                        days_forward: int, spread_threshold: float) -> pd.DataFrame:
+                        days_forward: int, spread_threshold: float, all_feats: bool = False) -> pd.DataFrame:
     """
     Generate X and Y for a pair of bonds. One row of the final dataframe has both features and labels for ONE DAY.
     spread = leg2 ytm - leg1 ytm.  YTM's unit is %.
@@ -79,6 +79,7 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
                         If NEGATIVE, assuming spread is narrower, then:
                             during the period between T and T + days_forward,
                             if any day's spread - spread_T < spread_threshold, then label = 1.
+        all_feats (bool): If True, all features are included. If False, only features in select_features() are included.
     Returns:
         df(Dataframe): One row of this final dataframe has both features and labels for ONE DAY.
     """
@@ -127,7 +128,6 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
         df[f'OUT_BAL_LEG2_t-{i}'] = df.OUT_BAL_LEG2.shift(i)
 
     first_date = df.iloc[0]['IPO_DATE_LEG2']  # leg2's IPO date, for selecting n samples.
-    df = select_features(df, days_back=days_back)
 
     # Label Engineering
     df = df.sort_values(by='DATE')
@@ -149,9 +149,11 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     # Last sample = leg2's IPO date + days_back + n_samples - 1
     # Only trading days are counted. It's different from calendar days.
     df = df[(df['DATE'] >= first_date)].iloc[days_back:days_back + n_samples]
-    df.to_csv(PATH.SPREAD_DATA + f'{leg1_code}_{leg2_code}_FE.csv', index=False, encoding='utf-8')
     # Ratio: positive samples / total samples
     logger.info(f'Label 1 ratio: {df.LABEL.sum() / len(df):.2f}')
+    if not all_feats:
+        df = select_features(df, days_back=days_back)
+    df.to_csv(PATH.SPREAD_DATA + f'{leg1_code}_{leg2_code}_FE.csv', index=False, encoding='utf-8')
     df = df.drop(columns=['DATE'])
     return df
 
