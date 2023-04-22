@@ -9,20 +9,6 @@ from fxincome import logger
 w.start()
 
 
-def dynamic_feature_names(f_name: str, days_back: int = 0, avg: bool = False) -> list[str]:
-    """
-    If avg is False, return ['f_name', 'f_name_t-1', 'f_name_t-2', ..., 'f_name_t-{days_back}']
-    If avg is True, return ['f_name', 'f_name_AVG_{days_back}']
-    """
-    feature_names = [f_name]
-    if not avg:
-        for i in range(1, days_back + 1):
-            feature_names.append(f'{f_name}_t-{i}')
-    else:
-        feature_names.append(f'{f_name}_AVG_{days_back}')
-    return feature_names
-
-
 def download_data(start_date: datetime.date = datetime.date(2019, 1, 1),
                   end_date: datetime.date = datetime.date(2023, 4, 11)):
     for code in SPREAD.CDB_CODES:
@@ -39,12 +25,12 @@ def download_data(start_date: datetime.date = datetime.date(2019, 1, 1),
         df = df.reset_index()
         df.columns = ['DATE', 'CODE', 'IPO_DATE', 'COUPON', 'CLOSE', 'VOL', 'OUT_BAL', 'YTM']
         #  Change NaN to 0 for VOL when IPO_DATE >= DATE. Volume is unlikely to be NaN after IPO.
-        df.loc[df.DATE >= df.IPO_DATE, 'VOL'] = df.loc[df.DATE >= df.IPO_DATE, 'VOL'].fillna(0)
+        df.loc[df.DATE >= df.IPO_DATE, 'VOL'] = df.loc[df.DATE >= df.IPO_DATE, 'VOL'].fillna(0.0)
         df.to_csv(output_file, index=False, encoding='utf-8')
 
 
 def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_samples: int,
-                        days_forward: int, spread_threshold: float, all_feats: bool = False) -> pd.DataFrame:
+                        days_forward: int, spread_threshold: float, features: list[str]) -> pd.DataFrame:
     """
     Generate X and Y for a pair of bonds. One row of the final dataframe has both features and labels for ONE DAY.
     spread = leg2 ytm - leg1 ytm.  YTM's unit is %.
@@ -79,7 +65,8 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
                         If NEGATIVE, assuming spread is narrower, then:
                             during the period between T and T + days_forward,
                             if any day's spread - spread_T < spread_threshold, then label = 1.
-        all_feats (bool): If True, all features are included. If False, only features in select_features() are included.
+        features (list[str]): Only these features are included in the final dataframe.
+                              Note that labels are not included in features.
     Returns:
         df(Dataframe): One row of this final dataframe has both features and labels for ONE DAY.
     """
@@ -149,35 +136,62 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     # Last sample = leg2's IPO date + days_back + n_samples - 1
     # Only trading days are counted. It's different from calendar days.
     df = df[(df['DATE'] >= first_date)].iloc[days_back:days_back + n_samples]
+    # We suppose our strategy trades only before leg2 - leg1 >= 0 after outstanding balance of leg2 reaches max.
+    # Select rows from beginning until spread reaches the smallest positive number after out_bal of leg2 reaches max.
+    df = df.set_index('DATE')
+    max_out_bal = df.OUT_BAL_LEG2.max()
+    max_out_bal_df = df[df.OUT_BAL_LEG2 == max_out_bal]
+    first_positive_spread_index = max_out_bal_df.SPREAD.ge(0).idxmax()
+    df = df.loc[:first_positive_spread_index]
+    df = df.reset_index()
     # Ratio: positive samples / total samples
-    logger.info(f'Label 1 ratio: {df.LABEL.sum() / len(df):.2f}')
-    if not all_feats:
-        df = select_features(df, days_back=days_back)
+    logger.info(f'Label 1 ratio: {df.LABEL.sum() / len(df):.2f}. Total samples: {len(df)}')
+    df = df[['DATE'] + features + ['LABEL']]
     df.to_csv(PATH.SPREAD_DATA + f'{leg1_code}_{leg2_code}_FE.csv', index=False, encoding='utf-8')
     df = df.drop(columns=['DATE'])
     return df
 
 
-def select_features(df: pd.DataFrame, days_back: int) -> pd.DataFrame:
+def select_features(days_back: int) -> list[str]:
     """
-    Select features and return the selected dataframe.
+    Select features you want to keep.
     Modify the needed features in this function.
     Args:
-        df (Dataframe): Dataframe to select columns from.
         days_back (int): number of trade days backward for features,
                          when features of these past days are included to this sample.
                          Features are like yields, spreads, volumns, outstanding balances ...
                          for leg1 and leg2 on each past day.
     Returns:
-        df (Dataframe): One row of this final dataframe has both features and labels for ONE DAY.
+        features (list[str]): list of selected features.
     """
-    features = ['DATE', 'YTM_LEG1', 'YTM_LEG2']
-    features += dynamic_feature_names('SPREAD', days_back=days_back, avg=False)
-    features += dynamic_feature_names('VOL_DIFF', days_back=days_back, avg=True)
-    features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=False)
-    df = df[features]
-    return df
+
+    def dynamic_feature_names(f_name: str, days_back: int = 0, avg: bool = False) -> list[str]:
+        """
+        If avg is False, return ['f_name', 'f_name_t-1', 'f_name_t-2', ..., 'f_name_t-{days_back}']
+        If avg is True, return ['f_name', 'f_name_AVG_{days_back}']
+        """
+        feature_names = [f_name]
+        if not avg:
+            for i in range(1, days_back + 1):
+                feature_names.append(f'{f_name}_t-{i}')
+        else:
+            feature_names.append(f'{f_name}_AVG_{days_back}')
+        return feature_names
+    # Features for XGB
+    # features = ['YTM_LEG1', 'YTM_LEG2', 'DAYS_SINCE_LEG2_IPO']
+    # features += dynamic_feature_names('SPREAD', days_back=days_back, avg=True)
+    # features += dynamic_feature_names('VOL_DIFF', days_back=days_back, avg=True)
+    # features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=True)
+
+    # Features for LR
+    features = ['SPREAD', 'OUT_BAL_DIFF', 'VOL_DIFF', 'DAYS_SINCE_LEG2_IPO']
+    # features += dynamic_feature_names('SPREAD', days_back=days_back, avg=True)
+    # features += dynamic_feature_names('VOL_DIFF', days_back=days_back, avg=True)
+    # features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=True)
+    return features
 
 
-download_data(start_date=datetime.date(2019, 1, 1), end_date=datetime.date(2023, 4, 13))
-# feature_engineering('210215', '220205', days_back=5, n_samples=150, days_forward=10, spread_threshold=0.01)
+# download_data(start_date=datetime.date(2019, 1, 1), end_date=datetime.date(2023, 4, 13))
+features = select_features(days_back=5)
+feature_engineering('220205', '220210', days_back=5, n_samples=200, days_forward=10, spread_threshold=0.01,
+                    features=features)

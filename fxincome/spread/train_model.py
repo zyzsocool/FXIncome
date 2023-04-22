@@ -11,8 +11,6 @@ from fxincome import logger
 from fxincome.const import PATH, SPREAD
 from fxincome.spread import preprocess_data
 import xgboost as xgb
-import optuna
-from optuna.samplers import TPESampler
 from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.metrics import classification_report
 from sklearn.linear_model import LogisticRegression
@@ -68,7 +66,7 @@ def plot_graph(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFram
     plt.show()
 
 
-def generate_dataset(days_back: int, n_samples: int, days_forward: int, spread_threshold: float,
+def generate_dataset(days_back: int, n_samples: int, days_forward: int, spread_threshold: float, features: list[str],
                      last_n_for_test: int = 3):
     """
     Generate dataset for training and testing. Training set is yet to be split into train and validation set.
@@ -91,6 +89,8 @@ def generate_dataset(days_back: int, n_samples: int, days_forward: int, spread_t
                         If NEGATIVE, assuming spread is narrower, then:
                             during the period between T and T + days_forward,
                             if any day's spread - spread_T < spread_threshold, then label = 1.
+        features (list[str]): Only these features are included in the final dataframe.
+                              Note that labels are not included in features.
         last_n_for_test (int): Last n bonds are used for testing. It must be >= 2
                         Default is 3, which means 2 pairs of bonds are used for training.
     Returns:
@@ -102,23 +102,24 @@ def generate_dataset(days_back: int, n_samples: int, days_forward: int, spread_t
     assert last_n_for_test >= 2, 'test_num must be >= 2'
     # train and validation set, from 180210_190205 to 220210_220215
     df_train_val = preprocess_data.feature_engineering(SPREAD.CDB_CODES[0], SPREAD.CDB_CODES[1], days_back, n_samples,
-                                                       days_forward, spread_threshold)
+                                                       days_forward, spread_threshold, features)
     for i in range(1, len(SPREAD.CDB_CODES) - last_n_for_test):
         df_train_val = pd.concat([df_train_val,
                                   preprocess_data.feature_engineering(SPREAD.CDB_CODES[i], SPREAD.CDB_CODES[i + 1],
                                                                       days_back, n_samples,
-                                                                      days_forward, spread_threshold)], axis=0)
+                                                                      days_forward, spread_threshold,
+                                                                      features)], axis=0)
 
     # test set, from 220215_220210 to 220220_230205
     test_leg1_index = len(SPREAD.CDB_CODES) - last_n_for_test
     test_leg2_index = len(SPREAD.CDB_CODES) - last_n_for_test + 1
     df_test = preprocess_data.feature_engineering(SPREAD.CDB_CODES[test_leg1_index], SPREAD.CDB_CODES[test_leg2_index],
                                                   days_back, n_samples,
-                                                  days_forward, spread_threshold)
+                                                  days_forward, spread_threshold, features)
     for i in range(test_leg2_index, len(SPREAD.CDB_CODES) - 1):
         df_test = pd.concat([df_test, preprocess_data.feature_engineering(SPREAD.CDB_CODES[i], SPREAD.CDB_CODES[i + 1],
                                                                           days_back, n_samples,
-                                                                          days_forward, spread_threshold)], axis=0)
+                                                                          days_forward, spread_threshold,features)], axis=0)
 
     logger.info(f"Number of rows with null values in train and validation set: {df_train_val.isna().any(axis=1).sum()}")
     logger.info(f"Number of rows with null values in test set: {df_test.isna().any(axis=1).sum()}")
@@ -178,7 +179,7 @@ def lr_train(train_X, train_Y, test_X, test_Y):
         'logistic__C': stats.loguniform(1e-4, 10),
         'logistic__penalty': ['l1', 'l2'],
     }
-    lr_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=100, n_jobs=-1, pre_dispatch=64)
+    lr_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=1000, n_jobs=-1, pre_dispatch=64)
     lr_search.fit(train_X, train_Y)
     model = lr_search.best_estimator_
     x_train, x_val, y_train, y_val = train_test_split(train_X, train_Y, test_size=0.1)
@@ -197,7 +198,7 @@ def svm_train(train_X, train_Y, test_X, test_Y):
         'svm__kernel': ['poly', 'rbf', 'sigmoid'],
         'svm__degree': stats.randint(1, 5)
     }
-    svm_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=200, n_jobs=-1, pre_dispatch=64)
+    svm_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=500, n_jobs=-1, pre_dispatch=64)
     svm_search.fit(train_X, train_Y)
     model = svm_search.best_estimator_
     x_train, x_val, y_train, y_val = train_test_split(train_X, train_Y, test_size=0.1)
@@ -225,7 +226,7 @@ def report_model(model, test_X, test_Y, train_X, train_Y, val_X, val_Y):
     if hasattr(model, 'feature_importances_'):
         logger.info("Feature importances")
         for f_name, score in sorted(zip(test_X.columns, model.feature_importances_), key=lambda x: x[1],
-                                reverse=True):
+                                    reverse=True):
             logger.info(f"{f_name}, {float(score):.2f}")
     plot_graph(train_X, train_Y, test_X, test_Y, model)
     return round(model_score, 3), train_score, val_score
@@ -237,10 +238,11 @@ def main():
     days_forward = 10
     spread_threshold = -0.01
     last_n_bonds_for_test = 3
+    features = preprocess_data.select_features(days_back=days_back)
 
     train_X, train_Y, test_X, test_Y = generate_dataset(days_back, n_samples, days_forward, spread_threshold,
-                                                        last_n_bonds_for_test)
-    # model, name = xgb_scikit_random_train(train_X, train_Y, test_X, test_Y)
+                                                        features, last_n_bonds_for_test)
+    model, name = xgb_scikit_random_train(train_X, train_Y, test_X, test_Y)
     # model.get_booster().dump_model(PATH.SPREAD_MODEL + f'{name}_trees.txt')
     # config = model.get_booster().save_config()
     #
@@ -248,8 +250,8 @@ def main():
     #     json.dump(config, f)
     # model.save_model(PATH.SPREAD_MODEL + f'{name}.json')
 
-    model, name = lr_train(train_X, train_Y, test_X, test_Y)
-    joblib.dump(model, PATH.SPREAD_MODEL + f'{name}.pkl')
+    # model, name = lr_train(train_X, train_Y, test_X, test_Y)
+    # joblib.dump(model, PATH.SPREAD_MODEL + f'{name}.pkl')
     # model, name = svm_train(train_X, train_Y, test_X, test_Y)
 
 
