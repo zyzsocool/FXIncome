@@ -59,12 +59,12 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
         days_forward (int): number of trade days forward for labels. It's NOT calendar day.
         spread_threshold (float): spread threshold for labels. The unit is percent point, eg: 0.01 is 0.01%
                         Its sign determines whether spread is wider or narrower.
-                        If  POSITIVE, assuming spread is wider, then:
+                        If POSITIVE, assuming spread is wider, then:
                             during the period between T and T + days_forward,
                             if any day's spread - spread_T >= spread_threshold, then label = 1.
                         If NEGATIVE, assuming spread is narrower, then:
                             during the period between T and T + days_forward,
-                            if any day's spread - spread_T < spread_threshold, then label = 1.
+                            if any day's spread - spread_T <= spread_threshold, then label = 1.
         features (list[str]): Only these features are included in the final dataframe.
                               Note that labels are not included in features.
     Returns:
@@ -89,6 +89,12 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     df['SPREAD'] = df.YTM_LEG2 - df.YTM_LEG1
     df['VOL_DIFF'] = df.VOL_LEG2 - df.VOL_LEG1
     df['OUT_BAL_DIFF'] = df.OUT_BAL_LEG2 - df.OUT_BAL_LEG1
+    #  MACD of spread
+    df['SPREAD_MACD'] = df.SPREAD.ewm(span=days_back / 2, adjust=False).mean() - df.SPREAD.ewm(span=days_back,
+                                                                                               adjust=False).mean()
+    #  MACD of OUT_BAL_DIFF
+    df['OUT_BAL_DIFF_MACD'] = df.OUT_BAL_DIFF.ewm(span=days_back / 2, adjust=False).mean() - df.OUT_BAL_DIFF.ewm(
+        span=days_back, adjust=False).mean()
     #  Mean of past [t-1, t-2... t-days_back] days' YTM difference
     df[f'SPREAD_AVG_{days_back}'] = df.SPREAD.rolling(days_back, closed='left').mean()
     # Mean of past [t-1, t-2... t-days_back] days' volume difference
@@ -127,7 +133,7 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     else:  # spread is narrower
         df[f'min_in_future'] = df.SPREAD.rolling(
             pd.api.indexers.FixedForwardWindowIndexer(window_size=days_forward + 1)).min()
-        df['LABEL'] = df.apply(lambda row: 1 if (row.min_in_future - row.SPREAD) < spread_threshold else 0,
+        df['LABEL'] = df.apply(lambda row: 1 if (row.min_in_future - row.SPREAD) <= spread_threshold else 0,
                                axis=1)
         df = df.drop(columns=['min_in_future'])
 
@@ -138,6 +144,7 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     df = df[(df['DATE'] >= first_date)].iloc[days_back:days_back + n_samples]
     # We suppose our strategy trades only before leg2 - leg1 >= 0 after outstanding balance of leg2 reaches max.
     # Select rows from beginning until spread reaches the smallest positive number after out_bal of leg2 reaches max.
+    # If spread never >= 0, then select rows from beginning until out_bal of leg2 reaches max.
     df = df.set_index('DATE')
     max_out_bal = df.OUT_BAL_LEG2.max()
     max_out_bal_df = df[df.OUT_BAL_LEG2 == max_out_bal]
@@ -177,6 +184,7 @@ def select_features(days_back: int) -> list[str]:
         else:
             feature_names.append(f'{f_name}_AVG_{days_back}')
         return feature_names
+
     # Features for XGB
     # features = ['YTM_LEG1', 'YTM_LEG2', 'DAYS_SINCE_LEG2_IPO']
     # features += dynamic_feature_names('SPREAD', days_back=days_back, avg=True)
@@ -184,14 +192,24 @@ def select_features(days_back: int) -> list[str]:
     # features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=True)
 
     # Features for LR
-    features = ['SPREAD', 'OUT_BAL_DIFF', 'VOL_DIFF', 'DAYS_SINCE_LEG2_IPO']
-    # features += dynamic_feature_names('SPREAD', days_back=days_back, avg=True)
-    # features += dynamic_feature_names('VOL_DIFF', days_back=days_back, avg=True)
-    # features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=True)
+    features = []
+    features += dynamic_feature_names('SPREAD', days_back=days_back, avg=True)
+    features += dynamic_feature_names('VOL_DIFF', days_back=days_back, avg=True)
+    features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=True)
+
+    # Features for LGBM
+    # features = []  # 'MONTH''YTM_LEG1', 'YTM_LEG2', 'DAYS_SINCE_LEG2_IPO'
+    # features += dynamic_feature_names('VOL_LEG1', days_back=days_back)
+    # features += dynamic_feature_names('VOL_LEG2', days_back=days_back)
+    # features += dynamic_feature_names('YTM_LEG1', days_back=days_back)
+    # features += dynamic_feature_names('YTM_LEG2', days_back=days_back)
+    # features += dynamic_feature_names('SPREAD', days_back=days_back)
+    # features += dynamic_feature_names('VOL_DIFF', days_back=days_back)
+    # features += dynamic_feature_names('OUT_BAL_DIFF', days_back=1)
     return features
 
 
-# download_data(start_date=datetime.date(2019, 1, 1), end_date=datetime.date(2023, 4, 13))
-features = select_features(days_back=5)
-feature_engineering('220205', '220210', days_back=5, n_samples=200, days_forward=10, spread_threshold=0.01,
+# download_data(start_date=datetime.date(2019, 1, 1), end_date=datetime.date(2023, 4, 23))
+features = select_features(days_back=4)
+feature_engineering('220205', '220210', days_back=4, n_samples=200, days_forward=10, spread_threshold=0.01,
                     features=features)
