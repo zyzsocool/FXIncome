@@ -1,6 +1,5 @@
 # coding: utf-8
 import datetime
-
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,13 +11,12 @@ from fxincome.spread import preprocess_data
 from fxincome.utils import ModelAttr, JsonModel
 import xgboost as xgb
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split, KFold, StratifiedKFold, RandomizedSearchCV
-from sklearn.metrics import accuracy_score, roc_auc_score, recall_score, log_loss, classification_report
+from sklearn.metrics import log_loss, classification_report
 import lightgbm as lgbm
-from lightgbm import log_evaluation, early_stopping
+from lightgbm import early_stopping
 import optuna
 from optuna.samplers import TPESampler, GridSampler, RandomSampler
 from optuna.integration import LightGBMPruningCallback

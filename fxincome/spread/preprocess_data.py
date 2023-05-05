@@ -6,11 +6,10 @@ from fxincome.const import PATH, SPREAD
 from WindPy import w
 from fxincome import logger
 
-w.start()
-
 
 def download_data(start_date: datetime.date = datetime.date(2019, 1, 1),
                   end_date: datetime.date = datetime.date(2023, 4, 11)):
+    w.start()
     for code in SPREAD.CDB_CODES:
         wind_code = code + '.IB'
         w_data = w.wsd(wind_code,
@@ -30,7 +29,8 @@ def download_data(start_date: datetime.date = datetime.date(2019, 1, 1),
 
 
 def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_samples: int,
-                        days_forward: int, spread_threshold: float, features: list[str]) -> pd.DataFrame:
+                        days_forward: int, spread_threshold: float, features: list[str],
+                        keep_date: bool = False) -> pd.DataFrame:
     """
     Generate X and Y for a pair of bonds. One row of the final dataframe has both features and labels for ONE DAY.
     spread = leg2 ytm - leg1 ytm.  YTM's unit is %.
@@ -67,6 +67,7 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
                             if any day's spread - spread_T <= spread_threshold, then label = 1.
         features (list[str]): Only these features are included in the final dataframe.
                               Note that labels are not included in features.
+        keep_date (bool): If True, DATE column is included in the final dataframe.
     Returns:
         df(Dataframe): One row of this final dataframe has both features and labels for ONE DAY.
     """
@@ -155,7 +156,8 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     logger.info(f'Label 1 ratio: {df.LABEL.sum() / len(df):.2f}. Total samples: {len(df)}')
     df = df[['DATE'] + features + ['LABEL']]
     df.to_csv(PATH.SPREAD_DATA + f'{leg1_code}_{leg2_code}_FE.csv', index=False, encoding='utf-8')
-    df = df.drop(columns=['DATE'])
+    if not keep_date:
+        df = df.drop(columns=['DATE'])
     return df
 
 
@@ -209,7 +211,7 @@ def select_features(days_back: int) -> list[str]:
     return features
 
 
-# download_data(start_date=datetime.date(2019, 1, 1), end_date=datetime.date(2023, 4, 23))
-features = select_features(days_back=4)
-feature_engineering('220205', '220210', days_back=4, n_samples=200, days_forward=10, spread_threshold=0.01,
-                    features=features)
+download_data(start_date=datetime.date(2023, 4, 1), end_date=datetime.date(2023, 5, 4))
+# features = select_features(days_back=4)
+# feature_engineering('220205', '220210', days_back=4, n_samples=200, days_forward=10, spread_threshold=0.01,
+#                     features=features)
