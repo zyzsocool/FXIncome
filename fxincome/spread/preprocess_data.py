@@ -1,14 +1,18 @@
 import numpy as np
 import pandas as pd
-import os
 import datetime
 from fxincome.const import PATH, SPREAD
-from WindPy import w
 from fxincome import logger
+from WindPy import w
+from financepy.utils import Date, DayCountTypes, FrequencyTypes, ONE_MILLION
+from financepy.products.bonds import Bond, YTMCalcType
 
 
 def download_data(start_date: datetime.date = datetime.date(2019, 1, 1),
                   end_date: datetime.date = datetime.date(2023, 4, 11)):
+    """
+    Download data from Wind and save to csv files. One csv for each bond.
+    """
     w.start()
     for code in SPREAD.CDB_CODES:
         wind_code = code + '.IB'
@@ -144,7 +148,7 @@ def feature_engineering(leg1_code: str, leg2_code: str, days_back: int, n_sample
     # Only trading days are counted. It's different from calendar days.
     df = df[(df['DATE'] >= first_date)].iloc[days_back:days_back + n_samples]
     # We suppose our strategy trades only before leg2 - leg1 >= 0 after outstanding balance of leg2 reaches max.
-    # Select rows from beginning until spread reaches the smallest positive number after out_bal of leg2 reaches max.
+    # Select rows from beginning until spread >=0 after out_bal of leg2 reaches max.
     # If spread never >= 0, then select rows from beginning until out_bal of leg2 reaches max.
     df = df.set_index('DATE')
     max_out_bal = df.OUT_BAL_LEG2.max()
@@ -194,24 +198,103 @@ def select_features(days_back: int) -> list[str]:
     # features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=True)
 
     # Features for LR
-    features = []
-    features += dynamic_feature_names('SPREAD', days_back=days_back, avg=True)
-    features += dynamic_feature_names('VOL_DIFF', days_back=days_back, avg=True)
-    features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=True)
+    # features = []
+    # features += dynamic_feature_names('SPREAD', days_back=days_back, avg=True)
+    # features += dynamic_feature_names('VOL_DIFF', days_back=days_back, avg=True)
+    # features += dynamic_feature_names('OUT_BAL_DIFF', days_back=days_back, avg=True)
 
     # Features for LGBM
-    # features = []  # 'MONTH''YTM_LEG1', 'YTM_LEG2', 'DAYS_SINCE_LEG2_IPO'
-    # features += dynamic_feature_names('VOL_LEG1', days_back=days_back)
-    # features += dynamic_feature_names('VOL_LEG2', days_back=days_back)
-    # features += dynamic_feature_names('YTM_LEG1', days_back=days_back)
-    # features += dynamic_feature_names('YTM_LEG2', days_back=days_back)
-    # features += dynamic_feature_names('SPREAD', days_back=days_back)
-    # features += dynamic_feature_names('VOL_DIFF', days_back=days_back)
-    # features += dynamic_feature_names('OUT_BAL_DIFF', days_back=1)
+    features = []  # 'MONTH''YTM_LEG1', 'YTM_LEG2', 'DAYS_SINCE_LEG2_IPO'
+    features += dynamic_feature_names('VOL_LEG1', days_back=days_back)
+    features += dynamic_feature_names('VOL_LEG2', days_back=days_back)
+    features += dynamic_feature_names('YTM_LEG1', days_back=days_back)
+    features += dynamic_feature_names('YTM_LEG2', days_back=days_back)
+    features += dynamic_feature_names('SPREAD', days_back=days_back)
+    features += dynamic_feature_names('VOL_DIFF', days_back=days_back)
+    features += dynamic_feature_names('OUT_BAL_DIFF', days_back=1)
     return features
 
 
-download_data(start_date=datetime.date(2023, 4, 1), end_date=datetime.date(2023, 5, 4))
+def prepare_backtest_data(leg1_code: str, leg2_code: str):
+    """
+    Prepare data for backtest and save to csv file. One csv for each pair of bonds.
+    The full prices are calculated from YTMs.
+    """
+    if leg1_code not in SPREAD.CDB_CODES or leg2_code not in SPREAD.CDB_CODES:
+        raise ValueError('Invalid bond code.')
+    elif SPREAD.CDB_CODES.index(leg1_code) > SPREAD.CDB_CODES.index(leg2_code):
+        raise ValueError('leg1 must be issued before leg2.')
+    w.start()
+    input_file = PATH.SPREAD_DATA + leg1_code + '.csv'
+    df_1 = pd.read_csv(input_file, parse_dates=['DATE', 'IPO_DATE'])
+    input_file = PATH.SPREAD_DATA + leg2_code + '.csv'
+    df_2 = pd.read_csv(input_file, parse_dates=['DATE', 'IPO_DATE'])
+    input_file = PATH.SPREAD_DATA + 'bond_lending_rate.csv'
+    df_lend = pd.read_csv(input_file, parse_dates=['DATE'])
+    df_lend = df_lend[~df_lend['CODE'].str.contains('QF')]
+    df_lend['CODE'] = df_lend['CODE'].astype('int64')
+    df1 = pd.merge(df_1, df_lend, on=['DATE', 'CODE'], how='left')
+    df1.loc[:, ['LEND_RATE']] = df1.loc[:, ['LEND_RATE']].fillna(method='ffill')
+    df1.loc[:, ['LEND_RATE']] = df1.loc[:, ['LEND_RATE']].fillna(method='bfill')
+    df2 = pd.merge(df_2, df_lend, on=['DATE', 'CODE'], how='left')
+    df2.loc[:, ['LEND_RATE']] = df2.loc[:, ['LEND_RATE']].fillna(method='ffill')
+    df2.loc[:, ['LEND_RATE']] = df2.loc[:, ['LEND_RATE']].fillna(method='bfill')
+
+    def get_bond(leg_code: str):
+        error_code, rows = w.wss(leg_code + '.IB', 'carrydate,maturitydate,couponrate,interestfrequency', usedf=True)
+        row = rows.iloc[0]
+        issue_date = Date(row['CARRYDATE'].day, row['CARRYDATE'].month, row['CARRYDATE'].year)
+        maturity_date = Date(row['MATURITYDATE'].day, row['MATURITYDATE'].month, row['MATURITYDATE'].year)
+        coupon = row['COUPONRATE'] / 100
+        accrual_type = DayCountTypes.ACT_ACT_ICMA
+        face = ONE_MILLION * 500
+        if row['INTERESTFREQUENCY'] == 1:
+            freq_type = FrequencyTypes.ANNUAL
+        elif row['INTERESTFREQUENCY'] == 2:
+            freq_type = FrequencyTypes.SEMI_ANNUAL
+        elif row['INTERESTFREQUENCY'] == 4:
+            freq_type = FrequencyTypes.QUARTERLY
+        else:
+            raise ValueError(f'Unknown frequency type {row["INTERESTFREQUENCY"]}')
+        bond = Bond(issue_date, maturity_date, coupon, freq_type, accrual_type, face)
+        return bond
+
+    bond1 = get_bond(leg1_code)
+    bond2 = get_bond(leg2_code)
+    df1 = df1[['DATE'] + ['CODE'] + ['VOL'] + ['OUT_BAL'] + ['YTM'] + ['LEND_RATE']]
+    df2 = df2[['DATE'] + ['CODE'] + ['VOL'] + ['OUT_BAL'] + ['YTM'] + ['LEND_RATE']]
+    df = pd.merge(df1, df2, on='DATE', how='inner', suffixes=('_LEG1', '_LEG2'))
+    df['SPREAD'] = df['YTM_LEG2'] - df['YTM_LEG1']
+    df = df.dropna()
+    df = df.set_index('DATE')
+    df = df.reset_index()
+    df['ESTIMATED_PRICE1'] = np.nan
+    df['ESTIMATED_PRICE2'] = np.nan
+    for i in range(0, len(df)):
+        settlement_date = Date(df['DATE'][i].day, df['DATE'][i].month, df['DATE'][i].year)
+        df.loc[i, 'ESTIMATED_PRICE1'] = bond1.full_price_from_ytm(settlement_date, df.loc[i, 'YTM_LEG1'] / 100,
+                                                                  YTMCalcType.US_STREET)
+        df.loc[i, 'ESTIMATED_PRICE2'] = bond2.full_price_from_ytm(settlement_date, df.loc[i, 'YTM_LEG2'] / 100,
+                                                                  YTMCalcType.US_STREET)
+    df['Close'] = df['ESTIMATED_PRICE1'] - df['ESTIMATED_PRICE2']
+    df['Open'] = df['ESTIMATED_PRICE1'] - df['ESTIMATED_PRICE2']
+    df['High'] = df['ESTIMATED_PRICE1'] - df['ESTIMATED_PRICE2']
+    df['Low'] = df['ESTIMATED_PRICE1'] - df['ESTIMATED_PRICE2']
+    max_out_bal = df.OUT_BAL_LEG2.max()
+    max_out_bal_df = df[df.OUT_BAL_LEG2 == max_out_bal]
+    # Select rows from beginning until spread >=0 after out_bal of leg2 reaches max.
+    # If spread never >= 0, select all data.
+    if sum(max_out_bal_df.SPREAD.ge(0)) > 0:
+        first_positive_spread_index = max_out_bal_df.SPREAD.ge(0).idxmax()
+        df = df.loc[:first_positive_spread_index + 1]
+    df = df.reset_index()
+    df = df.drop(['index', 'ESTIMATED_PRICE1', 'ESTIMATED_PRICE2'], axis=1)
+    df.to_csv(PATH.SPREAD_DATA + leg1_code + '_' + leg2_code + '_bt.csv', index=False, encoding='utf-8')
+
+
+# download_data(start_date=datetime.date(2019, 1, 10), end_date=datetime.date(2023, 5, 4))
+for i in range(0, 13):
+    prepare_backtest_data(SPREAD.CDB_CODES[i], SPREAD.CDB_CODES[i + 1])
 # features = select_features(days_back=4)
 # feature_engineering('220205', '220210', days_back=4, n_samples=200, days_forward=10, spread_threshold=0.01,
 #                     features=features)

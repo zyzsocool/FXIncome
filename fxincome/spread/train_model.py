@@ -13,7 +13,7 @@ import xgboost as xgb
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import train_test_split, KFold, StratifiedKFold, RandomizedSearchCV
+from sklearn.model_selection import train_test_split, TimeSeriesSplit, StratifiedKFold, RandomizedSearchCV
 from sklearn.metrics import log_loss, classification_report
 import lightgbm as lgbm
 from lightgbm import early_stopping
@@ -69,9 +69,10 @@ def plot_graph(x_train: pd.DataFrame, y_train: pd.DataFrame, x_test: pd.DataFram
 
 
 def generate_dataset(days_back: int, n_samples: int, days_forward: int, spread_threshold: float, features: list[str],
-                     last_n_for_test: int = 3):
+                     last_n_for_test: int = 3, keep_date: bool = False):
     """
-    Generate dataset for training and testing. Training set is yet to be split into train and validation set.
+    Generate dataset(sorted by date) for training and testing.
+    Training set is yet to be split into train and validation set.
     Args:
         days_back (int): number of trade days backward for features,
                          when features of these past days are included to this sample.
@@ -95,46 +96,55 @@ def generate_dataset(days_back: int, n_samples: int, days_forward: int, spread_t
                               Note that labels are not included in features.
         last_n_for_test (int): Last n bonds are used for testing. It must be >= 2
                         Default is 3, which means 2 pairs of bonds are used for training.
+        keep_date (bool): If True, DATE column is included in the final dataframe.
     Returns:
-        train_X(DataFrame): DataFrame for training features.
-        train_Y(DataFrame): 1D DataFrame for training labels, 0 or 1.
-        test_X(DataFrame): DataFrame for testing features.
-        test_Y(DataFrame): 1D DataFrame for testing labels, 0 or 1.
+        train_X(DataFrame): DataFrame for training features. Sorted by date
+        train_Y(DataFrame): 1D DataFrame for training labels, 0 or 1. Sorted by date。
+        test_X(DataFrame): DataFrame for testing features.Sorted by date
+        test_Y(DataFrame): 1D DataFrame for testing labels, 0 or 1. Sorted by date。
     """
     assert last_n_for_test >= 2, 'test_num must be >= 2'
     # train and validation set, from 180210_190205 to 220210_220215
-    df_train_val = preprocess_data.feature_engineering(SPREAD.CDB_CODES[0], SPREAD.CDB_CODES[1], days_back, n_samples,
-                                                       days_forward, spread_threshold, features)
+    df_train = preprocess_data.feature_engineering(SPREAD.CDB_CODES[0], SPREAD.CDB_CODES[1], days_back, n_samples,
+                                                   days_forward, spread_threshold, features, keep_date=True)
     for i in range(1, len(SPREAD.CDB_CODES) - last_n_for_test):
-        df_train_val = pd.concat([df_train_val,
-                                  preprocess_data.feature_engineering(SPREAD.CDB_CODES[i], SPREAD.CDB_CODES[i + 1],
-                                                                      days_back, n_samples,
-                                                                      days_forward, spread_threshold,
-                                                                      features)], axis=0)
+        df_train = pd.concat([df_train,
+                              preprocess_data.feature_engineering(SPREAD.CDB_CODES[i], SPREAD.CDB_CODES[i + 1],
+                                                                  days_back, n_samples,
+                                                                  days_forward, spread_threshold,
+                                                                  features, keep_date=True)],
+                             axis=0)
 
     # test set, from 220215_220210 to 220220_230205
     test_leg1_index = len(SPREAD.CDB_CODES) - last_n_for_test
     test_leg2_index = len(SPREAD.CDB_CODES) - last_n_for_test + 1
     df_test = preprocess_data.feature_engineering(SPREAD.CDB_CODES[test_leg1_index], SPREAD.CDB_CODES[test_leg2_index],
                                                   days_back, n_samples,
-                                                  days_forward, spread_threshold, features)
+                                                  days_forward, spread_threshold, features, keep_date=True)
     for i in range(test_leg2_index, len(SPREAD.CDB_CODES) - 1):
-        df_test = pd.concat([df_test, preprocess_data.feature_engineering(SPREAD.CDB_CODES[i], SPREAD.CDB_CODES[i + 1],
-                                                                          days_back, n_samples,
-                                                                          days_forward, spread_threshold, features)],
+        df_test = pd.concat([df_test,
+                             preprocess_data.feature_engineering(SPREAD.CDB_CODES[i], SPREAD.CDB_CODES[i + 1],
+                                                                 days_back, n_samples,
+                                                                 days_forward, spread_threshold, features,
+                                                                 keep_date=True)],
                             axis=0)
 
-    logger.info(f"Number of rows with null values in train and validation set: {df_train_val.isna().any(axis=1).sum()}")
+    logger.info(f"Number of rows with null values in train and validation set: {df_train.isna().any(axis=1).sum()}")
     logger.info(f"Number of rows with null values in test set: {df_test.isna().any(axis=1).sum()}")
-    df_train_val = df_train_val.dropna()
-    df_test = df_test.dropna()
-    logger.info(f"Test samples: {len(df_test)}, Test ratio: {len(df_test) / (len(df_train_val) + len(df_test)):.4f}")
-    df_train_val.to_csv(PATH.SPREAD_DATA + 'train_samples.csv', index=False, encoding='utf-8')
+    df_train = df_train.dropna().sort_values(by='DATE')
+    df_test = df_test.dropna().sort_values(by='DATE')
+    logger.info(f"Test samples: {len(df_test)}, Test ratio: {len(df_test) / (len(df_train) + len(df_test)):.4f}")
+    df_train.to_csv(PATH.SPREAD_DATA + 'train_samples.csv', index=False, encoding='utf-8')
     df_test.to_csv(PATH.SPREAD_DATA + 'test_samples.csv', index=False, encoding='utf-8')
-    train_X = df_train_val.drop(columns=['LABEL'])
-    train_Y = df_train_val['LABEL']
+    train_X = df_train.drop(columns=['LABEL'])
+    train_Y = df_train[['DATE', 'LABEL']]
     test_X = df_test.drop(columns=['LABEL'])
-    test_Y = df_test['LABEL']
+    test_Y = df_test[['DATE', 'LABEL']]
+    if not keep_date:
+        train_X = train_X.drop(columns=['DATE'])
+        train_Y = train_Y.drop(columns=['DATE'])
+        test_X = test_X.drop(columns=['DATE'])
+        test_Y = test_Y.drop(columns=['DATE'])
     return train_X, train_Y, test_X, test_Y
 
 
@@ -214,9 +224,10 @@ class OptunaCVObjective(object):
         }
         param_grid = {**search_param, **fixed_param}
 
-        cv = StratifiedKFold(n_splits=5, shuffle=True)
-
-        cv_scores = np.empty(5)
+        n_splits = 5
+        cv = StratifiedKFold(n_splits=n_splits, shuffle=True)
+        # cv = TimeSeriesSplit(n_splits=n_splits)
+        cv_scores = np.empty(n_splits)
         for idx, (train_idx, test_idx) in enumerate(cv.split(self.x_df, self.y_df)):
             x_train, x_test = self.x_df.iloc[train_idx], self.x_df.iloc[test_idx]
             y_train, y_test = self.y_df.iloc[train_idx], self.y_df.iloc[test_idx]
@@ -224,8 +235,8 @@ class OptunaCVObjective(object):
             model = lgbm.LGBMClassifier(objective="binary", verbose=-1, **param_grid)
             model.fit(
                 x_train,
-                y_train,
-                eval_set=[(x_test, y_test)],
+                y_train.LABEL.ravel(),
+                eval_set=[(x_test, y_test.LABEL.ravel())],
                 eval_metric="binary_logloss",
                 callbacks=[early_stopping(stopping_rounds=OptunaCVObjective.early_stopping_rounds)],
             )
@@ -246,8 +257,8 @@ def lgb_train(X_train, Y_train, X_test, Y_test):
     model = lgbm.LGBMClassifier(objective="binary", verbose=-1, **study.best_params)
     model.fit(
         x_train,
-        y_train,
-        eval_set=[(x_val, y_val)],
+        y_train.LABEL.ravel(),
+        eval_set=[(x_val, y_val.LABEL.ravel())],
         eval_metric="binary_logloss",
         callbacks=[early_stopping(stopping_rounds=OptunaCVObjective.early_stopping_rounds)]
     )
@@ -322,7 +333,7 @@ def main():
     train_X, train_Y, test_X, test_Y = generate_dataset(days_back, n_samples, days_forward, spread_threshold,
                                                         features, last_n_bonds_for_test)
 
-    # model, name = lgb_train(train_X, train_Y, test_X, test_Y)
+    model, name = lgb_train(train_X, train_Y, test_X, test_Y)
     # joblib.dump(model, PATH.SPREAD_MODEL + f'{name}.pkl')
 
     # model, name = xgb_scikit_random_train(train_X, train_Y, test_X, test_Y)
@@ -333,9 +344,9 @@ def main():
     # with open(PATH.SPREAD_MODEL + f'{name}_config.json', 'w') as f:
     #     json.dump(config, f)
 
-    model, name = lr_train(train_X, train_Y, test_X, test_Y)
-    joblib.dump(model, PATH.SPREAD_MODEL + f'{name}.pkl')
-    save_model_attr(name, days_back, n_samples, days_forward, spread_threshold, features, last_n_bonds_for_test)
+    # model, name = lr_train(train_X, train_Y, test_X, test_Y)
+    # joblib.dump(model, PATH.SPREAD_MODEL + f'{name}.pkl')
+    # save_model_attr(name, days_back, n_samples, days_forward, spread_threshold, features, last_n_bonds_for_test)
 
 
 if __name__ == '__main__':
