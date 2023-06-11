@@ -28,43 +28,43 @@ class SpreadBaselineStrategy(bt.Strategy):
         print(f"{dt:%Y%m%d} - {txt}")
 
     def __init__(self):
-        self.spread_data = self.getdatabyname(self.ST_NAME)
-        self.spread = self.spread_data.spread
-        self.spread_min = self.spread_data.spread_min
-        self.open = self.spread_data.open
-        self.high = self.spread_data.high
-        self.low = self.spread_data.low
-        self.volume = self.spread_data.volume  # leg1 volume
-        self.vol_leg2 = self.spread_data.vol_leg2
-        self.out_leg1 = self.spread_data.out_leg1
-        self.out_leg2 = self.spread_data.out_leg2
-        self.ytm_leg1 = self.spread_data.ytm_leg1
-        self.ytm_leg2 = self.spread_data.ytm_leg2
-        self.lend_rate_leg1 = self.spread_data.lend_rate_leg1
-        self.lend_rate_leg2 = self.spread_data.lend_rate_leg2
+        self.data = self.getdatabyname(self.ST_NAME)
+        self.spread = self.data.spread
+        self.spread_min = self.data.spread_min
+        self.open = self.data.open
+        self.high = self.data.high
+        self.low = self.data.low
+        self.volume = self.data.volume  # leg1 volume
+        self.vol_leg2 = self.data.vol_leg2
+        self.out_leg1 = self.data.out_leg1
+        self.out_leg2 = self.data.out_leg2
+        self.ytm_leg1 = self.data.ytm_leg1
+        self.ytm_leg2 = self.data.ytm_leg2
+        self.lend_rate_leg1 = self.data.lend_rate_leg1
+        self.lend_rate_leg2 = self.data.lend_rate_leg2
         self.lend_fee = 0.0
         self.total_fee = 0.0
 
     def next(self):
-        if self.getposition(self.spread_data).size < 0:
-            self.lend_fee = self.__calculate_lend_fee(size=self.getposition(self.spread_data).size,
-                                                      rate=self.lend_rate_leg1[0], type='borrow')
-        elif self.getposition(self.spread_data).size > 0:
-            self.lend_fee = self.__calculate_lend_fee(size=self.getposition(self.spread_data).size,
-                                                      rate=self.lend_rate_leg2[0], type='borrow')
+        if self.getposition(self.data).size < 0:
+            self.lend_fee = self.__calculate_lend_fee(face_value=self.getposition(self.data).size * 100,
+                                                      rate=self.lend_rate_leg1[0], direction='borrow')
+        elif self.getposition(self.data).size > 0:
+            self.lend_fee = self.__calculate_lend_fee(face_value=self.getposition(self.data).size * 100,
+                                                      rate=self.lend_rate_leg2[0], direction='borrow')
         self.broker.add_cash(self.lend_fee)
 
         # trading logic
         condition1 = (self.spread[0] >= -0.03)
         condition2 = (self.vol_leg2[0] < self.volume[0])
         condition3 = (self.spread[0] > self.spread_min[0] * 0.9)
-        condition4 = (self.getposition(self.spread_data).size < 0)
+        condition4 = (self.getposition(self.data).size < 0)
         condition5 = (self.spread[0] >= -0.005)
         condition6 = (self.out_leg2[0] > self.out_leg1[0] * 0.8)
         condition7 = (self.out_leg2[0] < self.out_leg1[0] * 0.6)
         condition8 = (self.spread[0] <= -0.04)
         condition9 = (self.vol_leg2[0] - self.volume[0] > 1e11)
-        condition10 = (self.getposition(self.spread_data).size == 0)
+        condition10 = (self.getposition(self.data).size == 0)
         if condition10 & condition1 & condition2 & condition7:
             self.sell(size=self.SIZE)
         if condition3 & condition8 & condition9:
@@ -86,7 +86,7 @@ class SpreadBaselineStrategy(bt.Strategy):
                 self.log(f'Order {order.ref}, BUY EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}')
             elif order.issell():
                 self.log(f'Order {order.ref}, SELL EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}')
-                if self.broker.getposition(self.spread_data).size == 0:
+                if self.broker.getposition(self.data).size == 0:
                     self.log(
                         f'Order: {order.ref},'
                         f'CASH: {self.broker.get_cash():.2f},'
@@ -98,12 +98,25 @@ class SpreadBaselineStrategy(bt.Strategy):
         if trade.isclosed:
             self.log(f"Trade Profit, Gross:{trade.pnl:.2f}, Net:{trade.pnlcomm:.2f}, Commission:{trade.commission:.2f}")
 
-    def __calculate_lend_fee(self, size: int, rate: float, type: str):
-        fee = 0
-        if type == 'borrow':
-            fee = -rate * abs(size) / 365 * (self.spread_data.datetime.date(1) - self.spread_data.datetime.date(0)).days
-        elif type == 'lend':
-            fee = rate * abs(size) / 365 * (self.spread_data.datetime.date(1) - self.spread_data.datetime.date(0)).days
+    def __calculate_lend_fee(self, face_value: int, rate: float, direction: str) -> float:
+        """
+        Calculate the lending fee for a bond. Direction must be 'borrow' or 'lend'.
+        Args:
+            face_value (int):   face value of the bond
+            rate (float):       lending rate. 1 means 1% annual rate.
+            direction (str):    'borrow' means the bond is borrowed and must pay lending fee.
+                                'lend' means the bond is lent out and receive lending fee.
+
+        Returns:
+            fee(float): lending fee. Positive means receive fee, negative means pay fee.
+        """
+        rate = rate / 100
+        if direction == 'borrow':
+            fee = -rate * abs(face_value) / 365 * (self.data.datetime.date(1) - self.data.datetime.date(0)).days
+        elif direction == 'lend':
+            fee = rate * abs(face_value) / 365 * (self.data.datetime.date(1) - self.data.datetime.date(0)).days
+        else:
+            raise ValueError("direction must be 'borrow' or 'lend'")
         return fee
 
 

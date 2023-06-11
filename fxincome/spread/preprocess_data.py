@@ -290,18 +290,6 @@ def prepare_backtest_data(leg1_code: str, leg2_code: str):
     df = df.reset_index()
     df = df.drop(['index', 'ESTIMATED_PRICE1', 'ESTIMATED_PRICE2'], axis=1)
     df.to_csv(PATH.SPREAD_DATA + leg1_code + '_' + leg2_code + '_bt.csv', index=False, encoding='utf-8')
-    # Prepare data for lending rate. Backtrader does not support bond lending.
-    # Buy/sell a virtual asset to simulate bond lending.
-    df_lend1 = df
-    df_lend1['Open'] = 0.0  # Close the virtual asset position at price of 0. The trade direction may be buy or sell.
-    df_lend1['Close'] = df_lend1['LEND_RATE_LEG1']  # real lending rate
-    df_lend1 = df_lend1[['DATE'] + ['Open'] + ['Close'] + ['CODE_LEG1']]
-    df_lend1.to_csv(PATH.SPREAD_DATA + leg1_code + '_' + '_lend_rate.csv', index=False, encoding='utf-8')
-    df_lend2 = df
-    df_lend2['Open'] = 0.0  # Close the virtual asset position at price of 0. The trade direction may be buy or sell.
-    df_lend2['Close'] = df_lend2['LEND_RATE_LEG2']  # real lending rate
-    df_lend2 = df_lend2[['DATE'] + ['Open'] + ['Close'] + ['CODE_LEG2']]
-    df_lend2.to_csv(PATH.SPREAD_DATA + leg2_code + '_lend_rate.csv', index=False, encoding='utf-8')
 
 
 # download_data(start_date=datetime.date(2019, 1, 10), end_date=datetime.date(2023, 5, 4))
