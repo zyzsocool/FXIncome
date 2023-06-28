@@ -240,6 +240,7 @@ def prepare_backtest_data(leg1_code: str, leg2_code: str):
     df2.loc[:, ['LEND_RATE']] = df2.loc[:, ['LEND_RATE']].fillna(method='ffill')
     df2.loc[:, ['LEND_RATE']] = df2.loc[:, ['LEND_RATE']].fillna(method='bfill')
 
+    # Return a FinancePy Bond object and save its cash flows to a csv file.
     def get_bond(leg_code: str):
         error_code, rows = w.wss(leg_code + '.IB', 'carrydate,maturitydate,couponrate,interestfrequency', usedf=True)
         row = rows.iloc[0]
@@ -247,7 +248,7 @@ def prepare_backtest_data(leg1_code: str, leg2_code: str):
         maturity_date = Date(row['MATURITYDATE'].day, row['MATURITYDATE'].month, row['MATURITYDATE'].year)
         coupon = row['COUPONRATE'] / 100
         accrual_type = DayCountTypes.ACT_ACT_ICMA
-        face = ONE_MILLION * 500
+        face = ONE_MILLION * 100
         if row['INTERESTFREQUENCY'] == 1:
             freq_type = FrequencyTypes.ANNUAL
         elif row['INTERESTFREQUENCY'] == 2:
@@ -257,6 +258,11 @@ def prepare_backtest_data(leg1_code: str, leg2_code: str):
         else:
             raise ValueError(f'Unknown frequency type {row["INTERESTFREQUENCY"]}')
         bond = Bond(issue_date, maturity_date, coupon, freq_type, accrual_type, face)
+        coupon_dates = bond._coupon_dates[1:]
+        flow_amounts = bond._flow_amounts[1:]
+        flow_amounts = [flow_amount * 100 for flow_amount in flow_amounts]
+        cash_flow = pd.DataFrame({'DATE': coupon_dates, 'AMOUNT': flow_amounts})
+        cash_flow.to_csv(PATH.SPREAD_DATA + f'cash_flow_{leg_code}.csv', index=False)
         return bond
 
     bond1 = get_bond(leg1_code)

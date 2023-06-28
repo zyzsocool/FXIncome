@@ -1,6 +1,9 @@
 import backtrader as bt
 import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
 from fxincome.const import PATH, SPREAD
+from fxincome import logger
 
 
 class SpreadData(bt.feeds.PandasData):
@@ -42,17 +45,59 @@ class SpreadBaselineStrategy(bt.Strategy):
         self.ytm_leg2 = self.data.ytm_leg2
         self.lend_rate_leg1 = self.data.lend_rate_leg1
         self.lend_rate_leg2 = self.data.lend_rate_leg2
-        self.lend_fee = 0.0
         self.total_fee = 0.0
+        self.leg1_code = int(self.data.code_leg1[0])
+        self.cash_flow_leg1 = pd.read_csv(PATH.SPREAD_DATA + f'cash_flow_{self.leg1_code}.csv', parse_dates=['DATE'])
+        self.cash_flow_leg1['DATE'] = self.cash_flow_leg1['DATE'].dt.date
+        self.leg2_code = int(self.data.code_leg2[0])
+        self.cash_flow_leg2 = pd.read_csv(PATH.SPREAD_DATA + f'cash_flow_{self.leg2_code}.csv', parse_dates=['DATE'])
+        self.cash_flow_leg2['DATE'] = self.cash_flow_leg2['DATE'].dt.date
+        self.result = pd.read_csv(PATH.SPREAD_DATA + f'{self.leg1_code}_{self.leg2_code}_bt.csv', parse_dates=['DATE'])
+        self.result['DATE'] = self.result['DATE'].dt.date
+        self.result['Profit'] = 0.0
+        self.result['Lend Fee'] = 0.0
+        self.result['Sell'] = 0.0
+        self.result['Buy'] = 0.0
+        self.last_leg1_remaining_payment_times = len(
+            self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(1)])
+        self.last_leg2_remaining_payment_times = len(
+            self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(1)])
+        self.leg1_the_ordinal_of_next_payment = len(self.cash_flow_leg1) - self.last_leg1_remaining_payment_times
+        self.leg2_the_ordinal_of_next_payment = len(self.cash_flow_leg2) - self.last_leg2_remaining_payment_times
 
     def next(self):
+        lend_fee = 0.0
+        #  Only fee for borrowing is considered.
         if self.getposition(self.data).size < 0:
-            self.lend_fee = self.__calculate_lend_fee(face_value=self.getposition(self.data).size * 100,
-                                                      rate=self.lend_rate_leg1[0], direction='borrow')
+            lend_fee = self.__calculate_lend_fee(face_value=self.getposition(self.data).size * 100,
+                                                 rate=self.lend_rate_leg1[0], direction='borrow')
         elif self.getposition(self.data).size > 0:
-            self.lend_fee = self.__calculate_lend_fee(face_value=self.getposition(self.data).size * 100,
-                                                      rate=self.lend_rate_leg2[0], direction='borrow')
-        self.broker.add_cash(self.lend_fee)
+            lend_fee = self.__calculate_lend_fee(face_value=self.getposition(self.data).size * 100,
+                                                 rate=self.lend_rate_leg2[0], direction='borrow')
+        self.broker.add_cash(lend_fee)
+        self.total_fee += lend_fee
+        self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'Lend Fee'] = self.total_fee
+
+        # coupon payment
+        self.today_leg1_remaining_payment_times = len(
+            self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(0)])
+        self.today_leg2_remaining_payment_times = len(
+            self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(0)])
+        self.leg1_the_ordinal_of_next_payment = len(self.cash_flow_leg1) - self.last_leg1_remaining_payment_times
+        self.leg2_the_ordinal_of_next_payment = len(self.cash_flow_leg2) - self.last_leg2_remaining_payment_times
+        if self.today_leg1_remaining_payment_times < self.last_leg1_remaining_payment_times:
+            coupon = self.cash_flow_leg1.loc[[self.leg1_the_ordinal_of_next_payment], ['AMOUNT']].values[0][
+                         0] * self.last_position
+            self.log(f'coupon payment {coupon}')
+            self.broker.add_cash(coupon)
+        if self.today_leg2_remaining_payment_times < self.last_leg2_remaining_payment_times:
+            coupon = -self.cash_flow_leg2.loc[[self.leg2_the_ordinal_of_next_payment], ['AMOUNT']].values[0][
+                0] * self.last_position
+            self.log(f'coupon payment {coupon}')
+            self.broker.add_cash(coupon)
+        self.last_leg1_remaining_payment_times = self.today_leg1_remaining_payment_times
+        self.last_leg2_remaining_payment_times = self.today_leg2_remaining_payment_times
+        self.last_position = self.getposition(self.data).size
 
         # trading logic
         condition1 = (self.spread[0] >= -0.03)
@@ -75,6 +120,10 @@ class SpreadBaselineStrategy(bt.Strategy):
                 self.buy(size=self.SIZE)
         elif condition5 & condition6:
             self.close()
+        self.result.loc[
+            self.result['DATE'] == self.data.datetime.date(0), 'Profit'] = self.broker.getvalue() - self.INIT_CASH
+        # if self.getposition(self.data).size == 0:
+        #     self.result.to_csv(PATH.SPREAD_DATA + f'{self.leg1_code}_{self.leg2_code}_result.csv', index=False)
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -84,12 +133,15 @@ class SpreadBaselineStrategy(bt.Strategy):
         if order.status in [order.Completed]:
             if order.isbuy():
                 self.log(f'Order {order.ref}, BUY EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}')
+                self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'Buy'] = 1
             elif order.issell():
                 self.log(f'Order {order.ref}, SELL EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}')
+                self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'Sell'] = 1
                 if self.broker.getposition(self.data).size == 0:
                     self.log(
                         f'Order: {order.ref},'
                         f'CASH: {self.broker.get_cash():.2f},'
+                        f'FEE: {self.total_fee:.2f},'
                         f'PROFIT: {self.broker.get_cash() - self.INIT_CASH:.2f}')
         elif order.status in [order.Canceled, order.Margin, order.Rejected, order.Expired]:
             self.log(f'Order {order.ref} Canceled/Margin/Rejected/Expired')
@@ -120,24 +172,64 @@ class SpreadBaselineStrategy(bt.Strategy):
         return fee
 
 
+def plot_spread(leg1, leg2):
+    input_file = PATH.SPREAD_DATA + f'{leg1}_{leg2}_result.csv'
+    data = pd.read_csv(input_file, parse_dates=['DATE'])
+    data['Profit'] = data['Profit'].apply(lambda x: x if x > -2000000 else np.nan)
+    data['Profit'] = data['Profit'].fillna(method='ffill')
+    fig = plt.figure(num=1, figsize=(15, 5))
+    ax = fig.add_subplot(111, label="1")
+    ax2 = fig.add_subplot(111, label="2", frame_on=False)
+    lns1 = ax.plot(data['DATE'], data['SPREAD'], color='r', label='SPREAD')
+    lns = lns1
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Spread")
+    for i in range(0, len(data['Buy'])):
+        if data['Buy'][i] == 1:
+            ax.annotate('Buy', xy=(data['DATE'][i], data['SPREAD'][i]),
+                        xytext=(data['DATE'][i], data['SPREAD'][i] + 0.01),
+                        arrowprops=dict(facecolor='green', shrink=0.05), )
+    for i in range(0, len(data['Sell'])):
+        if data['Sell'][i] == 1:
+            ax.annotate('Sell', xy=(data['DATE'][i], data['SPREAD'][i]),
+                        xytext=(data['DATE'][i], data['SPREAD'][i] + 0.01),
+                        arrowprops=dict(facecolor='yellow', shrink=0.05), )
+    lns2 = ax2.plot(data['DATE'], data['Profit'], label='Profit')
+    lns += lns2
+    ax2.set_ylabel("Profit")
+    ax2.xaxis.tick_top()
+    ax2.yaxis.tick_right()
+    ax2.xaxis.set_label_position('top')
+    ax2.yaxis.set_label_position('right')
+    labs = [l.get_label() for l in lns]
+    ax.legend(lns, labs, loc=0, fontsize=10)
+    plt.title(f'{leg1} and {leg2} Spread Trading')
+    plt.tight_layout()
+    plt.show()
+
+
 def main():
+    for i in range(0, 13):
+        leg1_code = SPREAD.CDB_CODES[i]
+        leg2_code = SPREAD.CDB_CODES[i + 1]
+        cerebro = bt.Cerebro()
+        input_file = PATH.SPREAD_DATA + leg1_code + '_' + leg2_code + '_bt.csv'
+        price_df = pd.read_csv(input_file, parse_dates=['DATE'])
+        # minimum spread in the past 15 days are used as the threshold to open a position
+        price_df['SPREAD_MIN'] = price_df['SPREAD'].rolling(15).min()
+        price_df.loc[:, ['SPREAD_MIN']] = price_df.loc[:, ['SPREAD_MIN']].fillna(method='backfill')
+        price_df = price_df.dropna()
+        data1 = SpreadData(dataname=price_df, nocase=True)
+        cerebro.adddata(data1, name=SpreadBaselineStrategy.ST_NAME)
+        cerebro.addstrategy(SpreadBaselineStrategy)
+        cerebro.broker.set_cash(SpreadBaselineStrategy.INIT_CASH)
+        logger.info(leg1_code + '_' + leg2_code)
+        cerebro.run()
+        logger.info(f'PROFIT: {(cerebro.broker.get_cash() - SpreadBaselineStrategy.INIT_CASH) / 10000:.2f}')
     # for i in range(0, 13):
-    i = 0
-    leg1_code = SPREAD.CDB_CODES[i]
-    leg2_code = SPREAD.CDB_CODES[i + 1]
-    cerebro = bt.Cerebro()
-    input_file = PATH.SPREAD_DATA + leg1_code + '_' + leg2_code + '_bt.csv'
-    price_df = pd.read_csv(input_file, parse_dates=['DATE'])
-    # minimum spread in the past 15 days are used as the threshold to open a position
-    price_df['SPREAD_MIN'] = price_df['SPREAD'].rolling(15).min()
-    price_df.loc[:, ['SPREAD_MIN']] = price_df.loc[:, ['SPREAD_MIN']].fillna(method='backfill')
-    price_df = price_df.dropna()
-    data1 = SpreadData(dataname=price_df, nocase=True)
-    cerebro.adddata(data1, name=SpreadBaselineStrategy.ST_NAME)
-    cerebro.addstrategy(SpreadBaselineStrategy)
-    cerebro.broker.set_cash(SpreadBaselineStrategy.INIT_CASH)
-    print(leg1_code + '_' + leg2_code)
-    cerebro.run()
+    #     leg1_code = SPREAD.CDB_CODES[i]
+    #     leg2_code = SPREAD.CDB_CODES[i + 1]
+    #     plot_spread(leg1_code,leg2_code)
 
 
 if __name__ == '__main__':
