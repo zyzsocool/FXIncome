@@ -62,8 +62,7 @@ class SpreadBaselineStrategy(bt.Strategy):
             self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(1)])
         self.last_leg2_remaining_payment_times = len(
             self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(1)])
-        self.leg1_the_ordinal_of_next_payment = len(self.cash_flow_leg1) - self.last_leg1_remaining_payment_times
-        self.leg2_the_ordinal_of_next_payment = len(self.cash_flow_leg2) - self.last_leg2_remaining_payment_times
+        self.last_position = 0
 
     def next(self):
         lend_fee = 0.0
@@ -74,29 +73,27 @@ class SpreadBaselineStrategy(bt.Strategy):
         elif self.getposition(self.data).size > 0:
             lend_fee = self.__calculate_lend_fee(face_value=self.getposition(self.data).size * 100,
                                                  rate=self.lend_rate_leg2[0], direction='borrow')
-        self.broker.add_cash(lend_fee)
+        self.broker.add_cash(lend_fee)  # Lending fee is negative.
         self.total_fee += lend_fee
         self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'Lend Fee'] = self.total_fee
 
         # coupon payment
-        self.today_leg1_remaining_payment_times = len(
+        today_leg1_remaining_payment_times = len(
             self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(0)])
-        self.today_leg2_remaining_payment_times = len(
+        today_leg2_remaining_payment_times = len(
             self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(0)])
-        self.leg1_the_ordinal_of_next_payment = len(self.cash_flow_leg1) - self.last_leg1_remaining_payment_times
-        self.leg2_the_ordinal_of_next_payment = len(self.cash_flow_leg2) - self.last_leg2_remaining_payment_times
-        if self.today_leg1_remaining_payment_times < self.last_leg1_remaining_payment_times:
-            coupon = self.cash_flow_leg1.loc[[self.leg1_the_ordinal_of_next_payment], ['AMOUNT']].values[0][
-                         0] * self.last_position
+        if today_leg1_remaining_payment_times < self.last_leg1_remaining_payment_times:
+            coupon_row_num = len(self.cash_flow_leg1) - self.last_leg1_remaining_payment_times
+            coupon = self.cash_flow_leg1.iloc[coupon_row_num]['AMOUNT'] * self.last_position
             self.log(f'coupon payment {coupon}')
             self.broker.add_cash(coupon)
-        if self.today_leg2_remaining_payment_times < self.last_leg2_remaining_payment_times:
-            coupon = -self.cash_flow_leg2.loc[[self.leg2_the_ordinal_of_next_payment], ['AMOUNT']].values[0][
-                0] * self.last_position
+        if today_leg2_remaining_payment_times < self.last_leg2_remaining_payment_times:
+            coupon_row_num = len(self.cash_flow_leg2) - self.last_leg2_remaining_payment_times
+            coupon = -self.cash_flow_leg2.iloc[coupon_row_num]['AMOUNT'] * self.last_position
             self.log(f'coupon payment {coupon}')
             self.broker.add_cash(coupon)
-        self.last_leg1_remaining_payment_times = self.today_leg1_remaining_payment_times
-        self.last_leg2_remaining_payment_times = self.today_leg2_remaining_payment_times
+        self.last_leg1_remaining_payment_times = today_leg1_remaining_payment_times
+        self.last_leg2_remaining_payment_times = today_leg2_remaining_payment_times
         self.last_position = self.getposition(self.data).size
 
         # trading logic
