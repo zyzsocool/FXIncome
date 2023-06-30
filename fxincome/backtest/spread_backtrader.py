@@ -61,6 +61,9 @@ class SpreadBaselineStrategy(bt.Strategy):
         self.last_day = self.data.datetime.date(0)  # In init(), date(0) is the last day.
 
     def next(self):
+        if self.data.datetime.date(0) == self.last_day:  # The last day has no tomorrow.
+            return
+
         # Lending fee and coupon payments are considered.
         # self.broker.add_cash() takes effect at T+1.
         lend_fee = 0.0
@@ -75,36 +78,35 @@ class SpreadBaselineStrategy(bt.Strategy):
         self.total_fee += lend_fee  # Total fee is accumulated fee up to now.
         self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'TotalFee'] = self.total_fee
 
-        # Coupon payment
-        if self.data.datetime.date(0) != self.last_day:  # The last day has no tomorrow.
-            # Coupon payment dates of cash_flow are dates when we receive coupon payments.
-            # We receive coupon payments at T+1 only when we hold the bond at T.
-            # Coupon payment dates are sometimes not trading days. Backtrader's datafeed are all trading days.
-            # We compute the left payment times to determine whether we receive coupon payments at T+1.
-            today_leg1_remaining_payment_times = len(
-                self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(0)])
-            today_leg2_remaining_payment_times = len(
-                self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(0)])
-            tomorrow_leg1_remaining_payment_times = len(
-                self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(1)])
-            tomorrow_leg2_remaining_payment_times = len(
-                self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(1)])
-            if tomorrow_leg1_remaining_payment_times < today_leg1_remaining_payment_times:
-                coupon_row_num = len(self.cash_flow_leg1) - today_leg1_remaining_payment_times
-                # Leg1's holder will receive coupon payments at T+1.
-                # Negative position means we short sell leg1, so we need to pay coupon to the lender.
-                # Positive position means we hold leg1, so we receive coupon.
-                coupon = self.cash_flow_leg1.iloc[coupon_row_num]['AMOUNT'] * self.getposition(self.data).size
-                self.log(f'coupon payment {coupon}', dt=self.data.datetime.date(1))
-                self.broker.add_cash(coupon)
-            if tomorrow_leg2_remaining_payment_times < today_leg2_remaining_payment_times:
-                coupon_row_num = len(self.cash_flow_leg2) - today_leg2_remaining_payment_times
-                # Leg2's holder will receive coupon payments at T+1.
-                # Negative position means we hold leg2, so we receive coupon.
-                # Positive position means we short sell leg2, so we need to pay coupon to the lender.
-                coupon = -self.cash_flow_leg2.iloc[coupon_row_num]['AMOUNT'] * self.getposition(self.data).size
-                self.log(f'coupon payment {coupon}', dt=self.data.datetime.date(1))
-                self.broker.add_cash(coupon)
+        # Coupon payment #
+        # Coupon payment dates of cash_flow are dates when we receive coupon payments.
+        # We receive coupon payments at T+1 only when we hold the bond at T.
+        # Coupon payment dates are sometimes not trading days. Backtrader's datafeed are all trading days.
+        # We compute the left payment times to determine whether we receive coupon payments at T+1.
+        today_leg1_remaining_payment_times = len(
+            self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(0)])
+        today_leg2_remaining_payment_times = len(
+            self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(0)])
+        tomorrow_leg1_remaining_payment_times = len(
+            self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(1)])
+        tomorrow_leg2_remaining_payment_times = len(
+            self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(1)])
+        if tomorrow_leg1_remaining_payment_times < today_leg1_remaining_payment_times:
+            coupon_row_num = len(self.cash_flow_leg1) - today_leg1_remaining_payment_times
+            # Leg1's holder will receive coupon payments at T+1.
+            # Negative position means we short sell leg1, so we need to pay coupon to the lender.
+            # Positive position means we hold leg1, so we receive coupon.
+            coupon = self.cash_flow_leg1.iloc[coupon_row_num]['AMOUNT'] * self.getposition(self.data).size
+            self.log(f'coupon payment {coupon}', dt=self.data.datetime.date(1))
+            self.broker.add_cash(coupon)
+        if tomorrow_leg2_remaining_payment_times < today_leg2_remaining_payment_times:
+            coupon_row_num = len(self.cash_flow_leg2) - today_leg2_remaining_payment_times
+            # Leg2's holder will receive coupon payments at T+1.
+            # Negative position means we hold leg2, so we receive coupon.
+            # Positive position means we short sell leg2, so we need to pay coupon to the lender.
+            coupon = -self.cash_flow_leg2.iloc[coupon_row_num]['AMOUNT'] * self.getposition(self.data).size
+            self.log(f'coupon payment {coupon}', dt=self.data.datetime.date(1))
+            self.broker.add_cash(coupon)
 
         # Trading logic
         condition1 = (self.spread[0] >= -0.03)
