@@ -55,16 +55,14 @@ class SpreadBaselineStrategy(bt.Strategy):
         self.result = pd.read_csv(PATH.SPREAD_DATA + f'{self.leg1_code}_{self.leg2_code}_bt.csv', parse_dates=['DATE'])
         self.result['DATE'] = self.result['DATE'].dt.date
         self.result['Profit'] = 0.0
-        self.result['Lend Fee'] = 0.0
+        self.result['TotalFee'] = 0.0
         self.result['Sell'] = 0.0
         self.result['Buy'] = 0.0
-        self.last_leg1_remaining_payment_times = len(
-            self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(1)])
-        self.last_leg2_remaining_payment_times = len(
-            self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(1)])
-        self.last_position = 0
+        self.last_day = self.data.datetime.date(0)  # In init(), date(0) is the last day.
 
     def next(self):
+        # Lending fee and coupon payments are considered.
+        # self.broker.add_cash() takes effect at T+1.
         lend_fee = 0.0
         #  Only fee for borrowing is considered.
         if self.getposition(self.data).size < 0:
@@ -73,30 +71,42 @@ class SpreadBaselineStrategy(bt.Strategy):
         elif self.getposition(self.data).size > 0:
             lend_fee = self.__calculate_lend_fee(face_value=self.getposition(self.data).size * 100,
                                                  rate=self.lend_rate_leg2[0], direction='borrow')
-        self.broker.add_cash(lend_fee)  # Lending fee is negative.
-        self.total_fee += lend_fee
-        self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'Lend Fee'] = self.total_fee
+        self.broker.add_cash(lend_fee)  # Lending fee for borrowing is negative. Cash change at T+1.
+        self.total_fee += lend_fee  # Total fee is accumulated fee up to now.
+        self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'TotalFee'] = self.total_fee
 
-        # coupon payment
-        today_leg1_remaining_payment_times = len(
-            self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(0)])
-        today_leg2_remaining_payment_times = len(
-            self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(0)])
-        if today_leg1_remaining_payment_times < self.last_leg1_remaining_payment_times:
-            coupon_row_num = len(self.cash_flow_leg1) - self.last_leg1_remaining_payment_times
-            coupon = self.cash_flow_leg1.iloc[coupon_row_num]['AMOUNT'] * self.last_position
-            self.log(f'coupon payment {coupon}')
-            self.broker.add_cash(coupon)
-        if today_leg2_remaining_payment_times < self.last_leg2_remaining_payment_times:
-            coupon_row_num = len(self.cash_flow_leg2) - self.last_leg2_remaining_payment_times
-            coupon = -self.cash_flow_leg2.iloc[coupon_row_num]['AMOUNT'] * self.last_position
-            self.log(f'coupon payment {coupon}')
-            self.broker.add_cash(coupon)
-        self.last_leg1_remaining_payment_times = today_leg1_remaining_payment_times
-        self.last_leg2_remaining_payment_times = today_leg2_remaining_payment_times
-        self.last_position = self.getposition(self.data).size
+        # Coupon payment
+        if self.data.datetime.date(0) != self.last_day:  # The last day has no tomorrow.
+            # Coupon payment dates of cash_flow are dates when we receive coupon payments.
+            # We receive coupon payments at T+1 only when we hold the bond at T.
+            # Coupon payment dates are sometimes not trading days. Backtrader's datafeed are all trading days.
+            # We compute the left payment times to determine whether we receive coupon payments at T+1.
+            today_leg1_remaining_payment_times = len(
+                self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(0)])
+            today_leg2_remaining_payment_times = len(
+                self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(0)])
+            tomorrow_leg1_remaining_payment_times = len(
+                self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(1)])
+            tomorrow_leg2_remaining_payment_times = len(
+                self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(1)])
+            if tomorrow_leg1_remaining_payment_times < today_leg1_remaining_payment_times:
+                coupon_row_num = len(self.cash_flow_leg1) - today_leg1_remaining_payment_times
+                # Leg1's holder will receive coupon payments at T+1.
+                # Negative position means we short sell leg1, so we need to pay coupon to the lender.
+                # Positive position means we hold leg1, so we receive coupon.
+                coupon = self.cash_flow_leg1.iloc[coupon_row_num]['AMOUNT'] * self.getposition(self.data).size
+                self.log(f'coupon payment {coupon}', dt=self.data.datetime.date(1))
+                self.broker.add_cash(coupon)
+            if tomorrow_leg2_remaining_payment_times < today_leg2_remaining_payment_times:
+                coupon_row_num = len(self.cash_flow_leg2) - today_leg2_remaining_payment_times
+                # Leg2's holder will receive coupon payments at T+1.
+                # Negative position means we hold leg2, so we receive coupon.
+                # Positive position means we short sell leg2, so we need to pay coupon to the lender.
+                coupon = -self.cash_flow_leg2.iloc[coupon_row_num]['AMOUNT'] * self.getposition(self.data).size
+                self.log(f'coupon payment {coupon}', dt=self.data.datetime.date(1))
+                self.broker.add_cash(coupon)
 
-        # trading logic
+        # Trading logic
         condition1 = (self.spread[0] >= -0.03)
         condition2 = (self.vol_leg2[0] < self.volume[0])
         condition3 = (self.spread[0] > self.spread_min[0] * 0.9)
@@ -139,7 +149,7 @@ class SpreadBaselineStrategy(bt.Strategy):
                         f'Order: {order.ref},'
                         f'CASH: {self.broker.get_cash():.2f},'
                         f'FEE: {self.total_fee:.2f},'
-                        f'PROFIT: {self.broker.get_cash() - self.INIT_CASH:.2f}')
+                        f'PROFIT: {self.broker.get_cash() - self.INIT_CASH + self.total_fee:.2f}')
         elif order.status in [order.Canceled, order.Margin, order.Rejected, order.Expired]:
             self.log(f'Order {order.ref} Canceled/Margin/Rejected/Expired')
 
@@ -155,7 +165,6 @@ class SpreadBaselineStrategy(bt.Strategy):
             rate (float):       lending rate. 1 means 1% annual rate.
             direction (str):    'borrow' means the bond is borrowed and must pay lending fee.
                                 'lend' means the bond is lent out and receive lending fee.
-
         Returns:
             fee(float): lending fee. Positive means receive fee, negative means pay fee.
         """
@@ -172,8 +181,6 @@ class SpreadBaselineStrategy(bt.Strategy):
 def plot_spread(leg1, leg2):
     input_file = PATH.SPREAD_DATA + f'{leg1}_{leg2}_result.csv'
     data = pd.read_csv(input_file, parse_dates=['DATE'])
-    data['Profit'] = data['Profit'].apply(lambda x: x if x > -2000000 else np.nan)
-    data['Profit'] = data['Profit'].fillna(method='ffill')
     fig = plt.figure(num=1, figsize=(15, 5))
     ax = fig.add_subplot(111, label="1")
     ax2 = fig.add_subplot(111, label="2", frame_on=False)
@@ -221,8 +228,10 @@ def main():
         cerebro.addstrategy(SpreadBaselineStrategy)
         cerebro.broker.set_cash(SpreadBaselineStrategy.INIT_CASH)
         logger.info(leg1_code + '_' + leg2_code)
-        cerebro.run()
-        logger.info(f'PROFIT: {(cerebro.broker.get_cash() - SpreadBaselineStrategy.INIT_CASH) / 10000:.2f}')
+        strategies = cerebro.run()
+        logger.info(
+            f'PROFIT: {(cerebro.broker.get_cash() - SpreadBaselineStrategy.INIT_CASH + strategies[0].total_fee) / 10000:.2f}')
+        strategies[0].result.to_csv(PATH.SPREAD_DATA + f'{leg1_code}_{leg2_code}_result.csv', index=False)
     # for i in range(0, 13):
     #     leg1_code = SPREAD.CDB_CODES[i]
     #     leg2_code = SPREAD.CDB_CODES[i + 1]
