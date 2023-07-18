@@ -62,6 +62,9 @@ class SpreadBaselineStrategy(bt.Strategy):
 
     def next(self):
         if self.data.datetime.date(0) == self.last_day:  # The last day has no tomorrow.
+            self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'TotalFee'] = self.total_fee
+            self.result.loc[
+                self.result['DATE'] == self.data.datetime.date(0), 'Profit'] = self.broker.getvalue() - self.INIT_CASH
             return
 
         # Lending fee and coupon payments are considered.
@@ -108,7 +111,7 @@ class SpreadBaselineStrategy(bt.Strategy):
             self.log(f'coupon payment {coupon}', dt=self.data.datetime.date(1))
             self.broker.add_cash(coupon)
 
-        # Trading logic
+        # trading logic
         condition1 = (self.spread[0] >= -0.03)
         condition2 = (self.vol_leg2[0] < self.volume[0])
         condition3 = (self.spread[0] > self.spread_min[0] * 0.9)
@@ -131,8 +134,6 @@ class SpreadBaselineStrategy(bt.Strategy):
             self.close()
         self.result.loc[
             self.result['DATE'] == self.data.datetime.date(0), 'Profit'] = self.broker.getvalue() - self.INIT_CASH
-        # if self.getposition(self.data).size == 0:
-        #     self.result.to_csv(PATH.SPREAD_DATA + f'{self.leg1_code}_{self.leg2_code}_result.csv', index=False)
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -151,7 +152,7 @@ class SpreadBaselineStrategy(bt.Strategy):
                         f'Order: {order.ref},'
                         f'CASH: {self.broker.get_cash():.2f},'
                         f'FEE: {self.total_fee:.2f},'
-                        f'PROFIT: {self.broker.get_cash() - self.INIT_CASH + self.total_fee:.2f}')
+                        f'PROFIT: {self.broker.get_cash() - self.INIT_CASH}')
         elif order.status in [order.Canceled, order.Margin, order.Rejected, order.Expired]:
             self.log(f'Order {order.ref} Canceled/Margin/Rejected/Expired')
 
@@ -231,8 +232,7 @@ def main():
         cerebro.broker.set_cash(SpreadBaselineStrategy.INIT_CASH)
         logger.info(leg1_code + '_' + leg2_code)
         strategies = cerebro.run()
-        logger.info(
-            f'PROFIT: {(cerebro.broker.get_cash() - SpreadBaselineStrategy.INIT_CASH + strategies[0].total_fee) / 10000:.2f}')
+        logger.info(f'PROFIT: {(cerebro.broker.get_value() - SpreadBaselineStrategy.INIT_CASH) / 10000:.2f}')
         strategies[0].result.to_csv(PATH.SPREAD_DATA + f'{leg1_code}_{leg2_code}_result.csv', index=False)
     # for i in range(0, 13):
     #     leg1_code = SPREAD.CDB_CODES[i]

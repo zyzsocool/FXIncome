@@ -59,19 +59,21 @@ if __name__ == '__main__':
     max_date = min_max_list[1][1]
     asset_df['initial_date'] = pd.to_datetime(asset_df['initial_date'])
     asset_df['end_date'] = pd.to_datetime(asset_df['end_date'])
-    #  按照券种、交易量排名等筛选债券
+    #  按照券种(债券类型、利率类型、是否含权债)、交易量排名等筛选债券
     asset_df = asset_df[(asset_df['bond_type'].isin(bond_type_need)) &
                         (asset_df['code'].str.contains('IB')) &
-                        (asset_df['code'].str.len() <= 9)]
+                        (asset_df['code'].str.len() <= 9) &
+                        (asset_df['interesttype'] == "固定利率") &
+                        (asset_df['embeddedopt'] == "否")]
     asset_df['period'] = asset_df['end_date'].apply(lambda x: round((x - date).days / 365))
     asset_df['period2'] = asset_df['end_date'].apply(lambda x: round((x - date).days / 365, 2))
     #  每个关键期限按交易量大小和债券活跃度参数筛选代表券，用于描绘收益率曲线
     activity = parameter_df.at['债券活跃度', '数值'].split(',')
-    activity_rank = int("".join(list(filter(str.isdigit,activity[0]))))
-    activity_trading = float("".join(list(filter(str.isdigit,activity[1]))))
+    activity_rank = int("".join(list(filter(str.isdigit, activity[0]))))
+    activity_trading = float("".join(list(filter(str.isdigit, activity[1]))))
     asset_df['ranking'] = asset_df[['trading', 'period']].groupby('period'). \
-        transform(lambda x:x >= maxx(x, activity_rank))
-    asset_df = asset_df[(asset_df['ranking']>0) & (asset_df['trading'] >= activity_trading)]. \
+        transform(lambda x: x >= maxx(x, activity_rank))
+    asset_df = asset_df[(asset_df['ranking'] > 0) & (asset_df['trading'] >= activity_trading)]. \
         sort_values(['period2'], ignore_index=True)
     yield_df = asset_df.iloc[:, 10:]
     #  构造收益率曲线
