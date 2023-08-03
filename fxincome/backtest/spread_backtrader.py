@@ -3,7 +3,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from fxincome.const import PATH, SPREAD
+from fxincome.utils import ModelAttr, JsonModel
 from fxincome import logger
+from fxincome.spread.predict_spread import predict_pair_spread
+import datetime
 
 
 class SpreadData(bt.feeds.PandasData):
@@ -22,7 +25,7 @@ class SpreadData(bt.feeds.PandasData):
 
 class SpreadBaselineStrategy(bt.Strategy):
     ST_NAME = 'baseline'
-    SIZE = 1000000  # 1 million size for 100 million face value of bond
+    SIZE = 1e6  # 1 million size for 100 million face value of bond
     INIT_CASH = 1e7  # 10 million initial cash for 100 million face value of bond
 
     def log(self, txt, dt=None):
@@ -46,10 +49,10 @@ class SpreadBaselineStrategy(bt.Strategy):
         self.lend_rate_leg1 = self.data.lend_rate_leg1
         self.lend_rate_leg2 = self.data.lend_rate_leg2
         self.total_fee = 0.0
-        self.leg1_code = int(self.data.code_leg1[0])
+        self.leg1_code = str(int(self.data.code_leg1[0]))
         self.cash_flow_leg1 = pd.read_csv(PATH.SPREAD_DATA + f'cash_flow_{self.leg1_code}.csv', parse_dates=['DATE'])
         self.cash_flow_leg1['DATE'] = self.cash_flow_leg1['DATE'].dt.date
-        self.leg2_code = int(self.data.code_leg2[0])
+        self.leg2_code = str(int(self.data.code_leg2[0]))
         self.cash_flow_leg2 = pd.read_csv(PATH.SPREAD_DATA + f'cash_flow_{self.leg2_code}.csv', parse_dates=['DATE'])
         self.cash_flow_leg2['DATE'] = self.cash_flow_leg2['DATE'].dt.date
         self.result = pd.read_csv(PATH.SPREAD_DATA + f'{self.leg1_code}_{self.leg2_code}_bt.csv', parse_dates=['DATE'])
@@ -181,6 +184,209 @@ class SpreadBaselineStrategy(bt.Strategy):
         return fee
 
 
+class SpreadPredictStrategy(bt.Strategy):
+    PREDICT = 'predict'
+    SIZE = 1000000  # 1 million size for 100 million face value of bond
+    INIT_CASH = 1e7  # 10 million initial cash for 100 million face value of bond
+    SMALL_SIZE = SIZE/10
+
+    def log(self, txt, dt=None):
+        """ Logging function for this strategy"""
+        dt = dt or self.getdatabyname(self.PREDICT).datetime.date(0)
+        print(f"{dt:%Y%m%d} - {txt}")
+
+    def __init__(self):
+        self.data = self.getdatabyname(self.PREDICT)
+        self.spread = self.data.spread
+        self.spread_min = self.data.spread_min
+        self.open = self.data.open
+        self.high = self.data.high
+        self.low = self.data.low
+        self.volume = self.data.volume  # leg1 volume
+        self.vol_leg2 = self.data.vol_leg2
+        self.out_leg1 = self.data.out_leg1
+        self.out_leg2 = self.data.out_leg2
+        self.ytm_leg1 = self.data.ytm_leg1
+        self.ytm_leg2 = self.data.ytm_leg2
+        self.lend_rate_leg1 = self.data.lend_rate_leg1
+        self.lend_rate_leg2 = self.data.lend_rate_leg2
+        self.total_fee = 0.0
+        self.leg1_code = str(int(self.data.code_leg1[0]))
+        self.cash_flow_leg1 = pd.read_csv(PATH.SPREAD_DATA + f'cash_flow_{self.leg1_code}.csv', parse_dates=['DATE'])
+        self.cash_flow_leg1['DATE'] = self.cash_flow_leg1['DATE'].dt.date
+        self.leg2_code = str(int(self.data.code_leg2[0]))
+        self.cash_flow_leg2 = pd.read_csv(PATH.SPREAD_DATA + f'cash_flow_{self.leg2_code}.csv', parse_dates=['DATE'])
+        self.cash_flow_leg2['DATE'] = self.cash_flow_leg2['DATE'].dt.date
+        self.result = pd.read_csv(PATH.SPREAD_DATA + f'{self.leg1_code}_{self.leg2_code}_bt.csv', parse_dates=['DATE'])
+        self.model_name_up = 'spread_0.665_XGB_20230428_1020'
+        self.model_attr = JsonModel.load_attr(self.model_name_up, PATH.SPREAD_MODEL + JsonModel.JSON_NAME)
+        self.days_forward_up=self.model_attr.labels['LABEL']['days_forward']
+        self.up_preds = predict_pair_spread(self.model_name_up, self.leg1_code, self.leg2_code)
+        self.model_name_down = 'spread_0.635_XGB_20230428_1029'
+        self.model_attr = JsonModel.load_attr(self.model_name_down, PATH.SPREAD_MODEL + JsonModel.JSON_NAME)
+        self.days_forward_down=self.model_attr.labels['LABEL']['days_forward']
+        self.down_preds = predict_pair_spread(self.model_name_down, self.leg1_code, self.leg2_code)
+        self.result['DATE'] = self.result['DATE'].dt.date
+        self.result['Profit'] = 0.0
+        self.result['TotalFee'] = 0.0
+        self.result['Sell'] = 0.0
+        self.result['Buy'] = 0.0
+        self.buy_spread = list()
+        self.buy_accu = 0
+        self.sell_spread = list()
+        self.sell_accu = 0
+        self.last_day = self.data.datetime.date(0)  # In init(), date(0) is the last day.
+        self.threshold = 0.01
+
+    def next(self):
+        today = self.data.datetime.date(0)
+        up_preds = self.up_preds.query('DATE ==@today')
+        down_preds = self.down_preds.query('DATE ==@today')
+        if self.data.datetime.date(0) == self.last_day or len(up_preds) == 0 or len(
+                down_preds) == 0:  # The last day has no tomorrow.
+            self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'TotalFee'] = self.total_fee
+            self.result.loc[
+                self.result['DATE'] == self.data.datetime.date(
+                    0), 'Profit'] = self.broker.getvalue() - self.INIT_CASH
+            return
+
+        # Lending fee and coupon payments are considered.
+        # self.broker.add_cash() takes effect at T+1.
+        lend_fee = 0.0
+        #  Only fee for borrowing is considered.
+        if self.getposition(self.data).size < 0:
+            lend_fee = self.__calculate_lend_fee(face_value=self.getposition(self.data).size * 100,
+                                                 rate=self.lend_rate_leg1[0], direction='borrow')
+        elif self.getposition(self.data).size > 0:
+            lend_fee = self.__calculate_lend_fee(face_value=self.getposition(self.data).size * 100,
+                                                 rate=self.lend_rate_leg2[0], direction='borrow')
+        self.broker.add_cash(lend_fee)  # Lending fee for borrowing is negative. Cash change at T+1.
+        self.total_fee += lend_fee  # Total fee is accumulated fee up to now.
+        self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'TotalFee'] = self.total_fee
+
+        # Coupon payment #
+        # Coupon payment dates of cash_flow are dates when we receive coupon payments.
+        # We receive coupon payments at T+1 only when we hold the bond at T.
+        # Coupon payment dates are sometimes not trading days. Backtrader's datafeed are all trading days.
+        # We compute the left payment times to determine whether we receive coupon payments at T+1.
+        today_leg1_remaining_payment_times = len(
+            self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(0)])
+        today_leg2_remaining_payment_times = len(
+            self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(0)])
+        tomorrow_leg1_remaining_payment_times = len(
+            self.cash_flow_leg1[self.cash_flow_leg1['DATE'] > self.data.datetime.date(1)])
+        tomorrow_leg2_remaining_payment_times = len(
+            self.cash_flow_leg2[self.cash_flow_leg2['DATE'] > self.data.datetime.date(1)])
+        if tomorrow_leg1_remaining_payment_times < today_leg1_remaining_payment_times:
+            coupon_row_num = len(self.cash_flow_leg1) - today_leg1_remaining_payment_times
+            # Leg1's holder will receive coupon payments at T+1.
+            # Negative position means we short sell leg1, so we need to pay coupon to the lender.
+            # Positive position means we hold leg1, so we receive coupon.
+            coupon = self.cash_flow_leg1.iloc[coupon_row_num]['AMOUNT'] * self.getposition(self.data).size
+            self.log(f'coupon payment {coupon}', dt=self.data.datetime.date(1))
+            self.broker.add_cash(coupon)
+        if tomorrow_leg2_remaining_payment_times < today_leg2_remaining_payment_times:
+            coupon_row_num = len(self.cash_flow_leg2) - today_leg2_remaining_payment_times
+            # Leg2's holder will receive coupon payments at T+1.
+            # Negative position means we hold leg2, so we receive coupon.
+            # Positive position means we short sell leg2, so we need to pay coupon to the lender.
+            coupon = -self.cash_flow_leg2.iloc[coupon_row_num]['AMOUNT'] * self.getposition(self.data).size
+            self.log(f'coupon payment {coupon}', dt=self.data.datetime.date(1))
+            self.broker.add_cash(coupon)
+
+        # trading logic
+        up_pred = int(up_preds.pred.iat[0])
+        down_pred = int(down_preds.pred.iat[0])
+        #check if we need to sell
+        for his_spread in self.buy_spread:
+            if (self.spread[0] >= his_spread[0] + self.threshold) or (
+                    self.data.datetime.date(0) - his_spread[1] == datetime.timedelta(
+                days=self.days_forward_up) and up_pred == 0) or(self.spread[0] <= his_spread[0] - 2*self.threshold):
+                self.sell(data=self.data, size=self.SMALL_SIZE)
+                self.buy_spread.remove(his_spread)
+                self.buy_accu -= self.SMALL_SIZE
+            elif (self.data.datetime.date(0) - his_spread[1] == datetime.timedelta(
+                days=self.days_forward_up) and up_pred == 1):
+                self.buy_spread.remove(his_spread)
+                self.buy_spread.append((self.spread[0], self.data.datetime.date(0)))
+        for his_spread in self.sell_spread:
+            if (self.spread[0] <= his_spread[0] - self.threshold) or (
+                    self.data.datetime.date(0) - his_spread[1] == datetime.timedelta(
+                days=self.days_forward_down) and down_pred == 0)or (self.spread[0] >= his_spread[0] + 2*self.threshold):
+                self.buy(data=self.data, size=self.SMALL_SIZE)
+                self.sell_spread.remove(his_spread)
+                self.sell_accu -= self.SMALL_SIZE
+            elif (self.data.datetime.date(0) - his_spread[1] == datetime.timedelta(
+                days=self.days_forward_down) and down_pred == 1):
+                self.sell_spread.remove(his_spread)
+                self.sell_spread.append((self.spread[0], self.data.datetime.date(0)))
+
+        #check if we need to buy
+        if (up_pred == 1) and (down_pred == 0) and (self.buy_accu < self.SIZE):
+            self.buy(data=self.data, size=self.SMALL_SIZE)
+            self.buy_spread.append((self.spread[0],self.data.datetime.date(0)))
+            self.buy_accu += self.SMALL_SIZE
+        elif (up_pred == 0) and (down_pred == 1) and (self.sell_accu < self.SIZE):
+            self.sell(data=self.data, size=self.SMALL_SIZE)
+            self.sell_spread.append((self.spread[0],self.data.datetime.date(0)))
+            self.sell_accu += self.SMALL_SIZE
+        elif (up_pred == 0) and (down_pred == 0):
+            pass
+        elif (up_pred == 1) and (down_pred == 1) and (self.buy_accu < self.SIZE) and (self.sell_accu < self.SIZE):
+            self.buy(data=self.data, size=self.SMALL_SIZE)
+            self.buy_spread.append((self.spread[0],self.data.datetime.date(0)))
+            self.buy_accu += self.SMALL_SIZE
+            self.sell(data=self.data, size=self.SMALL_SIZE)
+            self.sell_spread.append((self.spread[0],self.data.datetime.date(0)))
+            self.sell_accu += self.SMALL_SIZE
+
+
+        self.result.loc[
+            self.result['DATE'] == self.data.datetime.date(0), 'Profit'] = self.broker.getvalue() - self.INIT_CASH
+
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+        # Check if an order has been completed
+        # Attention: broker could reject order if not enough cash
+        if order.status in [order.Completed]:
+            if order.isbuy():
+                self.log(f'Order {order.ref}, BUY EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}')
+                self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'Buy'] = 1
+            elif order.issell():
+                self.log(f'Order {order.ref}, SELL EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}')
+                self.result.loc[self.result['DATE'] == self.data.datetime.date(0), 'Sell'] = 1
+                # if self.broker.getposition(self.data).size == 0:
+        elif order.status in [order.Canceled, order.Margin, order.Rejected, order.Expired]:
+            self.log(f'Order {order.ref} Canceled/Margin/Rejected/Expired')
+
+    def notify_trade(self, trade):
+        if trade.isclosed:
+            self.log(f"Trade Profit, Gross:{trade.pnl:.2f}, Net:{trade.pnlcomm:.2f}, Commission:{trade.commission:.2f}")
+
+    def __calculate_lend_fee(self, face_value: int, rate: float, direction: str) -> float:
+        """
+        Calculate the lending fee for a bond. Direction must be 'borrow' or 'lend'.
+        Args:
+            face_value (int):   face value of the bond
+            rate (float):       lending rate. 1 means 1% annual rate.
+            direction (str):    'borrow' means the bond is borrowed and must pay lending fee.
+                                'lend' means the bond is lent out and receive lending fee.
+        Returns:
+            fee(float): lending fee. Positive means receive fee, negative means pay fee.
+        """
+        rate = rate / 100
+        if direction == 'borrow':
+            fee = -rate * abs(face_value) / 365 * (
+                    self.data.datetime.date(1) - self.data.datetime.date(0)).days
+        elif direction == 'lend':
+            fee = rate * abs(face_value) / 365 * (
+                    self.data.datetime.date(1) - self.data.datetime.date(0)).days
+        else:
+            raise ValueError("direction must be 'borrow' or 'lend'")
+        return fee
+
+
 def plot_spread(leg1, leg2):
     input_file = PATH.SPREAD_DATA + f'{leg1}_{leg2}_result.csv'
     data = pd.read_csv(input_file, parse_dates=['DATE'])
@@ -216,7 +422,32 @@ def plot_spread(leg1, leg2):
 
 
 def main():
-    for i in range(0, 13):
+    # Baseline
+    # for i in range(0, 15):
+    #     leg1_code = SPREAD.CDB_CODES[i]
+    #     leg2_code = SPREAD.CDB_CODES[i + 1]
+    #     cerebro = bt.Cerebro()
+    #     input_file = PATH.SPREAD_DATA + leg1_code + '_' + leg2_code + '_bt.csv'
+    #     price_df = pd.read_csv(input_file, parse_dates=['DATE'])
+    #     # minimum spread in the past 15 days are used as the threshold to open a position
+    #     price_df['SPREAD_MIN'] = price_df['SPREAD'].rolling(15).min()
+    #     price_df.loc[:, ['SPREAD_MIN']] = price_df.loc[:, ['SPREAD_MIN']].fillna(method='backfill')
+    #     price_df = price_df.dropna()
+    #     data1 = SpreadData(dataname=price_df, nocase=True)
+    #     cerebro.adddata(data1, name=SpreadBaselineStrategy.ST_NAME)
+    #     cerebro.addstrategy(SpreadBaselineStrategy)
+    #     cerebro.broker.set_cash(SpreadBaselineStrategy.INIT_CASH)
+    #     logger.info(leg1_code + '_' + leg2_code)
+    #     strategies=cerebro.run()
+    #     logger.info(f'PROFIT: {(cerebro.broker.get_value() - SpreadBaselineStrategy.INIT_CASH ) / 10000:.2f}')
+    #     strategies[0].result.to_csv(PATH.SPREAD_DATA + f'{leg1_code}_{leg2_code}_result.csv', index=False)
+    # for i in range(0, 15):
+    #     leg1_code = SPREAD.CDB_CODES[i]
+    #     leg2_code = SPREAD.CDB_CODES[i + 1]
+    #     plot_spread(leg1_code,leg2_code)
+
+    # Prediction
+    for i in range(11, 15):
         leg1_code = SPREAD.CDB_CODES[i]
         leg2_code = SPREAD.CDB_CODES[i + 1]
         cerebro = bt.Cerebro()
@@ -226,18 +457,20 @@ def main():
         price_df['SPREAD_MIN'] = price_df['SPREAD'].rolling(15).min()
         price_df.loc[:, ['SPREAD_MIN']] = price_df.loc[:, ['SPREAD_MIN']].fillna(method='backfill')
         price_df = price_df.dropna()
-        data1 = SpreadData(dataname=price_df, nocase=True)
-        cerebro.adddata(data1, name=SpreadBaselineStrategy.ST_NAME)
-        cerebro.addstrategy(SpreadBaselineStrategy)
-        cerebro.broker.set_cash(SpreadBaselineStrategy.INIT_CASH)
+        # data_long and data_short are the same data feeds, but with different names.
+        # data_long is for predicting long strategy, and data_short is for predicting short strategy.
+        data_long = SpreadData(dataname=price_df, nocase=True)
+        cerebro.adddata(data_long, name=SpreadPredictStrategy.PREDICT)
+        cerebro.addstrategy(SpreadPredictStrategy)
+        cerebro.broker.set_cash(SpreadPredictStrategy.INIT_CASH)
         logger.info(leg1_code + '_' + leg2_code)
         strategies = cerebro.run()
-        logger.info(f'PROFIT: {(cerebro.broker.get_value() - SpreadBaselineStrategy.INIT_CASH) / 10000:.2f}')
+        logger.info(f'PROFIT: {(cerebro.broker.get_value() - SpreadPredictStrategy.INIT_CASH) / 10000:.2f}')
         strategies[0].result.to_csv(PATH.SPREAD_DATA + f'{leg1_code}_{leg2_code}_result.csv', index=False)
-    # for i in range(0, 13):
-    #     leg1_code = SPREAD.CDB_CODES[i]
-    #     leg2_code = SPREAD.CDB_CODES[i + 1]
-    #     plot_spread(leg1_code,leg2_code)
+    for i in range(11, 15):
+        leg1_code = SPREAD.CDB_CODES[i]
+        leg2_code = SPREAD.CDB_CODES[i + 1]
+        plot_spread(leg1_code, leg2_code)
 
 
 if __name__ == '__main__':
