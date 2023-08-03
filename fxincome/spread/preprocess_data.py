@@ -299,7 +299,7 @@ def prepare_backtest_data(leg1_code: str, leg2_code: str):
 
 
 # download_data(start_date=datetime.date(2019, 1, 10), end_date=datetime.date(2023, 5, 4))
-for i in range(0, 13):
+for i in range(0, 14):
     prepare_backtest_data(SPREAD.CDB_CODES[i], SPREAD.CDB_CODES[i + 1])
 # features = select_features(days_back=4)
 # feature_engineering('220205', '220210', days_back=4, n_samples=200, days_forward=10, spread_threshold=0.01,
