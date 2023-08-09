@@ -18,14 +18,4 @@
 #
 ###############################################################################
 
-import pandas as pd
-import numpy as np
-import datetime
-import os
-import joblib
-import matplotlib.pyplot as plt
 
-import logging
-
-logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger()

@@ -24,12 +24,14 @@ import datetime
 import os
 import joblib
 import matplotlib.pyplot as plt
-
 import logging
 
-logger = logging.getLogger()
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+logger = logging.getLogger("console_logger")
+logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+
+

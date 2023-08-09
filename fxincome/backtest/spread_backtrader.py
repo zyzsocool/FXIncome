@@ -1,15 +1,32 @@
+import datetime
+
 import backtrader as bt
 import pandas as pd
 import matplotlib.pyplot as plt
-import numpy as np
+
 from fxincome.const import PATH, SPREAD
-from fxincome.utils import ModelAttr, JsonModel
-from fxincome import logger
+from fxincome.utils import JsonModel
+from fxincome import logging, formatter, logger
 from fxincome.spread.predict_spread import predict_pair_spread
-import datetime
+
+f_logger = logging.getLogger("file_logger")
+f_logger.setLevel(logging.DEBUG)
+f_handler = logging.FileHandler("spread_backtrader.txt")
+f_handler.setFormatter(formatter)
+f_logger.addHandler(f_handler)
 
 
 class SpreadData(bt.feeds.PandasData):
+    """
+    Spread = leg2 ytm - leg1 ytm.  YTM's unit is %.
+    The prices(OHLC) = Leg1's full price - Leg2's full price.
+    Buy at price means buy leg1, sell leg2 with the same size. The net cash flow of buy is -price * size.
+    Sell at price means sell leg1, buy leg2 with the same size. The net cash flow of sell is +price * size.
+    The position of Spread is either >0, =0, or <0.
+    Position > 0 means LONG spread, i.e. LONG leg1, SHORT leg2.
+    Position < 0 means SHORT spread, i.e. SHORT leg1, LONG leg2.
+    """
+
     # Lines besides those required by backtrader (datetime, OHLC, volume, openinterest).
     lines = (
         "code_leg1",
@@ -50,7 +67,6 @@ class SpreadData(bt.feeds.PandasData):
 class SpreadStrategy(bt.Strategy):
     SIZE = 1e6  # 1 million size for 100 million face value of bond
     INIT_CASH = 1e7  # 10 million initial cash for 100 million face value of bond
-    UNIT_SIZE = SIZE / 10
 
     def __init__(self):
         self.data = self.getdatabyname(self.ST_NAME)
@@ -91,10 +107,10 @@ class SpreadStrategy(bt.Strategy):
             0
         )  # In init(), date(0) is the last day.
 
-    def log(self, txt, dt=None):
-        """Logging function for this strategy"""
+    def log(self, txt, dt=None, legs=None, level=logging.DEBUG):
         dt = dt or self.getdatabyname(self.ST_NAME).datetime.date(0)
-        print(f"{dt:%Y%m%d} - {txt}")
+        legs = legs or f"{self.leg1_code}_{self.leg2_code}"
+        f_logger.log(level, f"{legs} - {dt:%Y%m%d} - {txt}")
 
     def _calculate_lend_fee(
         self, face_value: int, rate: float, direction: str
@@ -207,6 +223,34 @@ class SpreadStrategy(bt.Strategy):
             self.log(f"coupon payment {coupon}", dt=self.data.datetime.date(1))
             self.broker.add_cash(coupon)
 
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+        # Check if an order has been completed
+        # Attention: broker could reject order if not enough cash
+        if order.status in [order.Completed]:
+            if order.isbuy():
+                self.log(
+                    f"Order {order.ref}, BUY EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}"
+                )
+                self.result.loc[
+                    self.result["DATE"] == self.data.datetime.date(0), "Buy"
+                ] = 1
+            elif order.issell():
+                self.log(
+                    f"Order {order.ref}, SELL EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}"
+                )
+                self.result.loc[
+                    self.result["DATE"] == self.data.datetime.date(0), "Sell"
+                ] = 1
+        elif order.status in [
+            order.Canceled,
+            order.Margin,
+            order.Rejected,
+            order.Expired,
+        ]:
+            self.log(f"Order {order.ref} Canceled/Margin/Rejected/Expired")
+
 
 class BaselineStrategy(SpreadStrategy):
     ST_NAME = "baseline"
@@ -252,47 +296,6 @@ class BaselineStrategy(SpreadStrategy):
             self.broker.getvalue() - self.INIT_CASH
         )
 
-    def notify_order(self, order):
-        if order.status in [order.Submitted, order.Accepted]:
-            return
-        # Check if an order has been completed
-        # Attention: broker could reject order if not enough cash
-        if order.status in [order.Completed]:
-            if order.isbuy():
-                self.log(
-                    f"Order {order.ref}, BUY EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}"
-                )
-                self.result.loc[
-                    self.result["DATE"] == self.data.datetime.date(0), "Buy"
-                ] = 1
-            elif order.issell():
-                self.log(
-                    f"Order {order.ref}, SELL EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}"
-                )
-                self.result.loc[
-                    self.result["DATE"] == self.data.datetime.date(0), "Sell"
-                ] = 1
-                if self.broker.getposition(self.data).size == 0:
-                    self.log(
-                        f"Order: {order.ref},"
-                        f"CASH: {self.broker.get_cash():.2f},"
-                        f"FEE: {self.total_fee:.2f},"
-                        f"PROFIT: {self.broker.get_cash() - self.INIT_CASH}"
-                    )
-        elif order.status in [
-            order.Canceled,
-            order.Margin,
-            order.Rejected,
-            order.Expired,
-        ]:
-            self.log(f"Order {order.ref} Canceled/Margin/Rejected/Expired")
-
-    def notify_trade(self, trade):
-        if trade.isclosed:
-            self.log(
-                f"Trade Profit, Gross:{trade.pnl:.2f}, Net:{trade.pnlcomm:.2f}, Commission:{trade.commission:.2f}"
-            )
-
 
 class PredictStrategy(SpreadStrategy):
     ST_NAME = "predict"
@@ -304,6 +307,7 @@ class PredictStrategy(SpreadStrategy):
             self.model_name_up, PATH.SPREAD_MODEL + JsonModel.JSON_NAME
         )
         self.days_forward_up = self.model_attr.labels["LABEL"]["days_forward"]
+        self.threshold_up = abs(self.model_attr.labels["LABEL"]["spread_threshold"])
         self.up_preds = predict_pair_spread(
             self.model_name_up, self.leg1_code, self.leg2_code
         )
@@ -312,14 +316,16 @@ class PredictStrategy(SpreadStrategy):
             self.model_name_down, PATH.SPREAD_MODEL + JsonModel.JSON_NAME
         )
         self.days_forward_down = self.model_attr.labels["LABEL"]["days_forward"]
+        self.threshold_down = abs(self.model_attr.labels["LABEL"]["spread_threshold"])
         self.down_preds = predict_pair_spread(
             self.model_name_down, self.leg1_code, self.leg2_code
         )
-        self.buy_spread = list()
-        self.buy_accu = 0
-        self.sell_spread = list()
-        self.sell_accu = 0
-        self.threshold = 0.01
+        self.unit_size_up = self.SIZE / self.days_forward_up
+        self.unit_size_down = self.SIZE / self.days_forward_down
+        self.buy_records = list()  # a list of tuple (spread, date)
+        self.long_position = 0  # Unit is the same as SIZE.
+        self.sell_records = list()  # a list of tuple (spread, date)
+        self.short_position = 0  # Unit is the same as SIZE.
 
     def next(self):
         today = self.data.datetime.date(0)
@@ -344,110 +350,65 @@ class PredictStrategy(SpreadStrategy):
         # trading logic
         up_pred = int(up_preds.pred.iat[0])
         down_pred = int(down_preds.pred.iat[0])
-        # check if we need to sell
-        for his_spread in self.buy_spread:
+        # check if we need to close position
+        for his_spread in self.buy_records:
             if (
-                (self.spread[0] >= his_spread[0] + self.threshold)
+                (self.spread[0] >= his_spread[0] + self.threshold_up)
                 or (
                     self.data.datetime.date(0) - his_spread[1]
                     == datetime.timedelta(days=self.days_forward_up)
                     and up_pred == 0
                 )
-                or (self.spread[0] <= his_spread[0] - 2 * self.threshold)
+                or (
+                    self.spread[0] <= his_spread[0] - 2 * self.threshold_up
+                )  # stop loss
             ):
-                self.sell(data=self.data, size=self.UNIT_SIZE)
-                self.buy_spread.remove(his_spread)
-                self.buy_accu -= self.UNIT_SIZE
+                self.sell(data=self.data, size=self.unit_size_up)
+                self.buy_records.remove(his_spread)
+                self.long_position -= self.unit_size_up
             elif (
                 self.data.datetime.date(0) - his_spread[1]
                 == datetime.timedelta(days=self.days_forward_up)
                 and up_pred == 1
             ):
-                self.buy_spread.remove(his_spread)
-                self.buy_spread.append((self.spread[0], self.data.datetime.date(0)))
-        for his_spread in self.sell_spread:
+                self.buy_records.remove(his_spread)
+                self.buy_records.append((self.spread[0], self.data.datetime.date(0)))
+        for his_spread in self.sell_records:
             if (
-                (self.spread[0] <= his_spread[0] - self.threshold)
+                (self.spread[0] <= his_spread[0] - self.threshold_down)
                 or (
                     self.data.datetime.date(0) - his_spread[1]
                     == datetime.timedelta(days=self.days_forward_down)
                     and down_pred == 0
                 )
-                or (self.spread[0] >= his_spread[0] + 2 * self.threshold)
+                or (
+                    self.spread[0] >= his_spread[0] + 2 * self.threshold_down
+                )  # stop loss
             ):
-                self.buy(data=self.data, size=self.UNIT_SIZE)
-                self.sell_spread.remove(his_spread)
-                self.sell_accu -= self.UNIT_SIZE
+                self.buy(data=self.data, size=self.unit_size_down)
+                self.sell_records.remove(his_spread)
+                self.short_position -= self.unit_size_down
             elif (
                 self.data.datetime.date(0) - his_spread[1]
                 == datetime.timedelta(days=self.days_forward_down)
                 and down_pred == 1
             ):
-                self.sell_spread.remove(his_spread)
-                self.sell_spread.append((self.spread[0], self.data.datetime.date(0)))
+                self.sell_records.remove(his_spread)
+                self.sell_records.append((self.spread[0], self.data.datetime.date(0)))
 
-        # check if we need to buy
-        if (up_pred == 1) and (down_pred == 0) and (self.buy_accu < self.SIZE):
-            self.buy(data=self.data, size=self.UNIT_SIZE)
-            self.buy_spread.append((self.spread[0], self.data.datetime.date(0)))
-            self.buy_accu += self.UNIT_SIZE
-        elif (up_pred == 0) and (down_pred == 1) and (self.sell_accu < self.SIZE):
-            self.sell(data=self.data, size=self.UNIT_SIZE)
-            self.sell_spread.append((self.spread[0], self.data.datetime.date(0)))
-            self.sell_accu += self.UNIT_SIZE
-        elif (up_pred == 0) and (down_pred == 0):
-            pass
-        elif (
-            (up_pred == 1)
-            and (down_pred == 1)
-            and (self.buy_accu < self.SIZE)
-            and (self.sell_accu < self.SIZE)
-        ):
-            self.buy(data=self.data, size=self.UNIT_SIZE)
-            self.buy_spread.append((self.spread[0], self.data.datetime.date(0)))
-            self.buy_accu += self.UNIT_SIZE
-            self.sell(data=self.data, size=self.UNIT_SIZE)
-            self.sell_spread.append((self.spread[0], self.data.datetime.date(0)))
-            self.sell_accu += self.UNIT_SIZE
+        # # check if we need to open position
+        if (up_pred == 1) and (self.long_position < self.SIZE):
+            self.buy(data=self.data, size=self.unit_size_up)
+            self.buy_records.append((self.spread[0], self.data.datetime.date(0)))
+            self.long_position += self.unit_size_up
+        if (down_pred == 1) and (self.short_position < self.SIZE):
+            self.sell(data=self.data, size=self.unit_size_down)
+            self.sell_records.append((self.spread[0], self.data.datetime.date(0)))
+            self.short_position += self.unit_size_down
 
         self.result.loc[self.result["DATE"] == self.data.datetime.date(0), "Profit"] = (
             self.broker.getvalue() - self.INIT_CASH
         )
-
-    def notify_order(self, order):
-        if order.status in [order.Submitted, order.Accepted]:
-            return
-        # Check if an order has been completed
-        # Attention: broker could reject order if not enough cash
-        if order.status in [order.Completed]:
-            if order.isbuy():
-                self.log(
-                    f"Order {order.ref}, BUY EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}"
-                )
-                self.result.loc[
-                    self.result["DATE"] == self.data.datetime.date(0), "Buy"
-                ] = 1
-            elif order.issell():
-                self.log(
-                    f"Order {order.ref}, SELL EXECUTED, {order.executed.price:.2f}, {order.executed.size:.2f}"
-                )
-                self.result.loc[
-                    self.result["DATE"] == self.data.datetime.date(0), "Sell"
-                ] = 1
-                # if self.broker.getposition(self.data).size == 0:
-        elif order.status in [
-            order.Canceled,
-            order.Margin,
-            order.Rejected,
-            order.Expired,
-        ]:
-            self.log(f"Order {order.ref} Canceled/Margin/Rejected/Expired")
-
-    def notify_trade(self, trade):
-        if trade.isclosed:
-            self.log(
-                f"Trade Profit, Gross:{trade.pnl:.2f}, Net:{trade.pnlcomm:.2f}, Commission:{trade.commission:.2f}"
-            )
 
 
 def plot_spread(leg1, leg2):
