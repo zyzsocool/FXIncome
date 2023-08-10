@@ -6,14 +6,8 @@ import matplotlib.pyplot as plt
 
 from fxincome.const import PATH, SPREAD
 from fxincome.utils import JsonModel
-from fxincome import logging, formatter, logger
+from fxincome import logging, logger, f_logger
 from fxincome.spread.predict_spread import predict_pair_spread
-
-f_logger = logging.getLogger("file_logger")
-f_logger.setLevel(logging.DEBUG)
-f_handler = logging.FileHandler("spread_backtrader.txt")
-f_handler.setFormatter(formatter)
-f_logger.addHandler(f_handler)
 
 
 class SpreadData(bt.feeds.PandasData):
@@ -351,49 +345,41 @@ class PredictStrategy(SpreadStrategy):
         up_pred = int(up_preds.pred.iat[0])
         down_pred = int(down_preds.pred.iat[0])
         # check if we need to close position
-        for his_spread in self.buy_records:
+        for buy_record in self.buy_records:
+            prediction_correct = self.spread[0] >= buy_record[0] + self.threshold_up
+            end_of_period = self.data.datetime.date(0) - buy_record[
+                1
+            ] == datetime.timedelta(days=self.days_forward_up)
+            stop_loss = self.spread[0] <= buy_record[0] - 2 * self.threshold_up
             if (
-                (self.spread[0] >= his_spread[0] + self.threshold_up)
-                or (
-                    self.data.datetime.date(0) - his_spread[1]
-                    == datetime.timedelta(days=self.days_forward_up)
-                    and up_pred == 0
-                )
-                or (
-                    self.spread[0] <= his_spread[0] - 2 * self.threshold_up
-                )  # stop loss
+                prediction_correct
+                or (end_of_period and not up_pred == 1)
+                or stop_loss
             ):
                 self.sell(data=self.data, size=self.unit_size_up)
-                self.buy_records.remove(his_spread)
+                self.buy_records.remove(buy_record)
                 self.long_position -= self.unit_size_up
-            elif (
-                self.data.datetime.date(0) - his_spread[1]
-                == datetime.timedelta(days=self.days_forward_up)
-                and up_pred == 1
-            ):
-                self.buy_records.remove(his_spread)
+            elif end_of_period and up_pred == 1:
+                # Update the cost of trade but hold position
+                self.buy_records.remove(buy_record)
                 self.buy_records.append((self.spread[0], self.data.datetime.date(0)))
-        for his_spread in self.sell_records:
+        for sell_record in self.sell_records:
+            prediction_correct = self.spread[0] <= sell_record[0] - self.threshold_down
+            end_of_period = self.data.datetime.date(0) - sell_record[
+                1
+            ] == datetime.timedelta(days=self.days_forward_down)
+            stop_loss = self.spread[0] >= sell_record[0] + 2 * self.threshold_down
             if (
-                (self.spread[0] <= his_spread[0] - self.threshold_down)
-                or (
-                    self.data.datetime.date(0) - his_spread[1]
-                    == datetime.timedelta(days=self.days_forward_down)
-                    and down_pred == 0
-                )
-                or (
-                    self.spread[0] >= his_spread[0] + 2 * self.threshold_down
-                )  # stop loss
+                prediction_correct
+                or (end_of_period and not down_pred == 1)
+                or stop_loss
             ):
                 self.buy(data=self.data, size=self.unit_size_down)
-                self.sell_records.remove(his_spread)
+                self.sell_records.remove(sell_record)
                 self.short_position -= self.unit_size_down
-            elif (
-                self.data.datetime.date(0) - his_spread[1]
-                == datetime.timedelta(days=self.days_forward_down)
-                and down_pred == 1
-            ):
-                self.sell_records.remove(his_spread)
+            elif end_of_period and down_pred == 1:
+                # Update the cost of trade but hold position
+                self.sell_records.remove(sell_record)
                 self.sell_records.append((self.spread[0], self.data.datetime.date(0)))
 
         # # check if we need to open position
