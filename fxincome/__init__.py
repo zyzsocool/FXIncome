@@ -38,6 +38,9 @@ logger.addHandler(handler)
 
 f_logger = logging.getLogger("file_logger")
 f_logger.setLevel(logging.DEBUG)
-f_handler = logging.FileHandler("spread_backtrader.txt")
+
+f_handler = logging.FileHandler(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "spread_log.txt")
+)
 f_handler.setFormatter(formatter)
 f_logger.addHandler(f_handler)
