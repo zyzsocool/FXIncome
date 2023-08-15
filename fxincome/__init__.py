@@ -40,7 +40,8 @@ f_logger = logging.getLogger("file_logger")
 f_logger.setLevel(logging.DEBUG)
 
 f_handler = logging.FileHandler(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "spread_log.txt")
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "spread_log.txt"),
+    mode="w"
 )
 f_handler.setFormatter(formatter)
 f_logger.addHandler(f_handler)
