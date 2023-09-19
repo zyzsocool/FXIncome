@@ -1,5 +1,3 @@
-import datetime
-
 import backtrader as bt
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -97,6 +95,7 @@ class SpreadStrategy(bt.Strategy):
         self.result["TotalFee"] = 0.0
         self.result["Sell"] = 0.0
         self.result["Buy"] = 0.0
+        self.result["Position"] = 0.0
         self.last_day = self.data.datetime.date(
             0
         )  # In init(), date(0) is the last day.
@@ -245,6 +244,15 @@ class SpreadStrategy(bt.Strategy):
         ]:
             self.log(f"Order {order.ref} Canceled/Margin/Rejected/Expired")
 
+    def last_day_process(self):
+        self.result.loc[
+            self.result["DATE"] == self.data.datetime.date(0), "TotalFee"
+        ] = self.total_fee
+        self.result.loc[self.result["DATE"] == self.data.datetime.date(0), "Profit"] = (
+            self.broker.getvalue() - self.INIT_CASH
+        )
+        return
+
 
 class BaselineStrategy(SpreadStrategy):
     ST_NAME = "baseline"
@@ -255,13 +263,7 @@ class BaselineStrategy(SpreadStrategy):
     def next(self):
         # The last day has no tomorrow.
         if self.data.datetime.date(0) == self.last_day:
-            self.result.loc[
-                self.result["DATE"] == self.data.datetime.date(0), "TotalFee"
-            ] = self.total_fee
-            self.result.loc[
-                self.result["DATE"] == self.data.datetime.date(0), "Profit"
-            ] = (self.broker.getvalue() - self.INIT_CASH)
-            return
+            return self.last_day_process()
 
         self._process_fee_coupon()
 
@@ -331,13 +333,7 @@ class PredictStrategy(SpreadStrategy):
             or len(up_preds) == 0
             or len(down_preds) == 0
         ):
-            self.result.loc[
-                self.result["DATE"] == self.data.datetime.date(0), "TotalFee"
-            ] = self.total_fee
-            self.result.loc[
-                self.result["DATE"] == self.data.datetime.date(0), "Profit"
-            ] = (self.broker.getvalue() - self.INIT_CASH)
-            return
+            return self.last_day_process()
 
         self._process_fee_coupon()
 
@@ -347,37 +343,37 @@ class PredictStrategy(SpreadStrategy):
         # check if we need to close position
         for buy_record in self.buy_records:
             prediction_correct = self.spread[0] >= buy_record[0] + self.threshold_up
-            end_of_period = self.data.datetime.date(0) - buy_record[
-                1
-            ] == datetime.timedelta(days=self.days_forward_up)
+            is_end_of_period = (
+                self.data.datetime.date(-self.days_forward_up) == buy_record[1]
+            )
             stop_loss = self.spread[0] <= buy_record[0] - 2 * self.threshold_up
             if (
                 prediction_correct
-                or (end_of_period and not up_pred == 1)
+                or (is_end_of_period and not up_pred == 1)
                 or stop_loss
             ):
                 self.sell(data=self.data, size=self.unit_size_up)
                 self.buy_records.remove(buy_record)
                 self.long_position -= self.unit_size_up
-            elif end_of_period and up_pred == 1:
+            elif is_end_of_period and up_pred == 1:
                 # Update the cost of trade but hold position
                 self.buy_records.remove(buy_record)
                 self.buy_records.append((self.spread[0], self.data.datetime.date(0)))
         for sell_record in self.sell_records:
             prediction_correct = self.spread[0] <= sell_record[0] - self.threshold_down
-            end_of_period = self.data.datetime.date(0) - sell_record[
-                1
-            ] == datetime.timedelta(days=self.days_forward_down)
+            is_end_of_period = (
+                self.data.datetime.date(-self.days_forward_down) == sell_record[1]
+            )
             stop_loss = self.spread[0] >= sell_record[0] + 2 * self.threshold_down
             if (
                 prediction_correct
-                or (end_of_period and not down_pred == 1)
+                or (is_end_of_period and not down_pred == 1)
                 or stop_loss
             ):
                 self.buy(data=self.data, size=self.unit_size_down)
                 self.sell_records.remove(sell_record)
                 self.short_position -= self.unit_size_down
-            elif end_of_period and down_pred == 1:
+            elif is_end_of_period and down_pred == 1:
                 # Update the cost of trade but hold position
                 self.sell_records.remove(sell_record)
                 self.sell_records.append((self.spread[0], self.data.datetime.date(0)))
@@ -395,6 +391,55 @@ class PredictStrategy(SpreadStrategy):
         self.result.loc[self.result["DATE"] == self.data.datetime.date(0), "Profit"] = (
             self.broker.getvalue() - self.INIT_CASH
         )
+
+
+class GridStrategy(SpreadStrategy):
+    ST_NAME = "Grid"
+
+    def __init__(self, spread_mean=-0.05, grid_num=5, grid_size=0.01):
+        super().__init__()
+        self.unit_size = self.SIZE / grid_num
+        self.grid_size = grid_size
+        self.buy_records = list()  # a list of tuple (spread, size)
+        self.long_position = 0  # Unit is the same as SIZE.
+        self.conditions = [spread_mean - i * grid_size for i in range(grid_num)]
+        # For mean = -0.05, grid_num = 5, grid_size = 0.01, spread conditions are:
+        # condition[0] = -0.05
+        # condition[1] = -0.06
+        # condition[2] = -0.07
+        # condition[3] = -0.08
+        # condition[4] = -0.09
+
+    def next(self):
+        # The last day has no tomorrow.
+        if self.data.datetime.date(0) == self.last_day:
+            return self.last_day_process()
+
+        self._process_fee_coupon()
+
+        # check if we need to close position
+        for buy_record in self.buy_records:
+            if self.spread[0] >= buy_record[0] + self.grid_size:
+                self.sell(data=self.data, size=buy_record[1])
+                self.buy_records.remove(buy_record)
+                self.long_position -= buy_record[1]
+
+        # check if we need to open position
+        for i in range(
+            len(self.conditions) - 1, -1, -1
+        ):  # spread conditions from small to large.
+            buy_size = self.unit_size * (i + 1) - self.long_position
+            if self.spread[0] <= self.conditions[i] and buy_size > 0:
+                self.buy(data=self.data, size=buy_size)
+                self.buy_records.append((self.spread[0], buy_size))
+                self.long_position += buy_size
+
+        self.result.loc[self.result["DATE"] == self.data.datetime.date(0), "Profit"] = (
+            self.broker.getvalue() - self.INIT_CASH
+        )
+        self.result.loc[
+            self.result["DATE"] == self.data.datetime.date(0), "Position"
+        ] = self.getposition(self.data).size
 
 
 def plot_spread(leg1, leg2):
@@ -437,39 +482,47 @@ def plot_spread(leg1, leg2):
     plt.show()
 
 
-def main():
-    # Baseline
-    # for i in range(0, 15):
-    #     leg1_code = SPREAD.CDB_CODES[i]
-    #     leg2_code = SPREAD.CDB_CODES[i + 1]
-    #     cerebro = bt.Cerebro()
-    #     input_file = PATH.SPREAD_DATA + leg1_code + '_' + leg2_code + '_bt.csv'
-    #     price_df = pd.read_csv(input_file, parse_dates=['DATE'])
-    #     # minimum spread in the past 15 days are used as the threshold to open a position
-    #     price_df['SPREAD_MIN'] = price_df['SPREAD'].rolling(15).min()
-    #     price_df.loc[:, ['SPREAD_MIN']] = price_df.loc[:, ['SPREAD_MIN']].fillna(method='backfill')
-    #     price_df = price_df.dropna()
-    #     data1 = SpreadData(dataname=price_df, nocase=True)
-    #     cerebro.adddata(data1, name=BaselineStrategy.ST_NAME)
-    #     cerebro.addstrategy(BaselineStrategy)
-    #     cerebro.broker.set_cash(BaselineStrategy.INIT_CASH)
-    #     logger.info(leg1_code + '_' + leg2_code)
-    #     strategies=cerebro.run()
-    #     logger.info(f'PROFIT: {(cerebro.broker.get_value() - BaselineStrategy.INIT_CASH ) / 10000:.2f}')
-    #     strategies[0].result.to_csv(PATH.SPREAD_DATA + f'{leg1_code}_{leg2_code}_result.csv', index=False)
-    # for i in range(0, 15):
-    #     leg1_code = SPREAD.CDB_CODES[i]
-    #     leg2_code = SPREAD.CDB_CODES[i + 1]
-    #     plot_spread(leg1_code,leg2_code)
-
-    # Prediction
-    for i in range(11, 14):
+def baseline_test():
+    # Baseline Strategy
+    for i in range(0, 15):
         leg1_code = SPREAD.CDB_CODES[i]
         leg2_code = SPREAD.CDB_CODES[i + 1]
         cerebro = bt.Cerebro()
         input_file = PATH.SPREAD_DATA + leg1_code + "_" + leg2_code + "_bt.csv"
         price_df = pd.read_csv(input_file, parse_dates=["DATE"])
         # minimum spread in the past 15 days are used as the threshold to open a position
+        price_df["SPREAD_MIN"] = price_df["SPREAD"].rolling(15).min()
+        price_df.loc[:, ["SPREAD_MIN"]] = price_df.loc[:, ["SPREAD_MIN"]].fillna(
+            method="backfill"
+        )
+        price_df = price_df.dropna()
+        data1 = SpreadData(dataname=price_df, nocase=True)
+        cerebro.adddata(data1, name=BaselineStrategy.ST_NAME)
+        cerebro.addstrategy(BaselineStrategy)
+        cerebro.broker.set_cash(BaselineStrategy.INIT_CASH)
+        logger.info(leg1_code + "_" + leg2_code)
+        strategies = cerebro.run()
+        logger.info(
+            f"PROFIT: {(cerebro.broker.get_value() - BaselineStrategy.INIT_CASH ) / 10000:.2f}"
+        )
+        strategies[0].result.to_csv(
+            PATH.SPREAD_DATA + f"{leg1_code}_{leg2_code}_result.csv", index=False
+        )
+    for i in range(0, 15):
+        leg1_code = SPREAD.CDB_CODES[i]
+        leg2_code = SPREAD.CDB_CODES[i + 1]
+        plot_spread(leg1_code, leg2_code)
+
+
+def prediction_test():
+    # Prediction Strategy
+    for i in range(11, 14):
+        leg1_code = SPREAD.CDB_CODES[i]
+        leg2_code = SPREAD.CDB_CODES[i + 1]
+        cerebro = bt.Cerebro()
+        input_file = PATH.SPREAD_DATA + leg1_code + "_" + leg2_code + "_bt.csv"
+        price_df = pd.read_csv(input_file, parse_dates=["DATE"])
+        # minimum spread in the past 15 days are used as the threshold to open a position. Only for baseline.
         price_df["SPREAD_MIN"] = price_df["SPREAD"].rolling(15).min()
         price_df.loc[:, ["SPREAD_MIN"]] = price_df.loc[:, ["SPREAD_MIN"]].fillna(
             method="backfill"
@@ -495,5 +548,38 @@ def main():
         plot_spread(leg1_code, leg2_code)
 
 
+def grid_test():
+    # Grid Strategy
+    for i in range(0, 14):
+        leg1_code = SPREAD.CDB_CODES[i]
+        leg2_code = SPREAD.CDB_CODES[i + 1]
+        cerebro = bt.Cerebro()
+        input_file = PATH.SPREAD_DATA + leg1_code + "_" + leg2_code + "_bt.csv"
+        price_df = pd.read_csv(input_file, parse_dates=["DATE"])
+        # minimum spread in the past 15 days are used as the threshold to open a position. Only for baseline.
+        price_df["SPREAD_MIN"] = price_df["SPREAD"].rolling(15).min()
+        price_df.loc[:, ["SPREAD_MIN"]] = price_df.loc[:, ["SPREAD_MIN"]].fillna(
+            method="backfill"
+        )
+        price_df = price_df.dropna()
+        data1 = SpreadData(dataname=price_df, nocase=True)
+        cerebro.adddata(data1, name=GridStrategy.ST_NAME)
+        cerebro.addstrategy(GridStrategy)
+        cerebro.broker.set_cash(GridStrategy.INIT_CASH)
+        cerebro.broker.set_coc(True)
+        logger.info(leg1_code + "_" + leg2_code)
+        strategies = cerebro.run()
+        logger.info(
+            f"PROFIT: {(cerebro.broker.get_value() - GridStrategy.INIT_CASH ) / 10000:.2f}"
+        )
+        strategies[0].result.to_csv(
+            PATH.SPREAD_DATA + f"{leg1_code}_{leg2_code}_result.csv", index=False
+        )
+    for i in range(0, 14):
+        leg1_code = SPREAD.CDB_CODES[i]
+        leg2_code = SPREAD.CDB_CODES[i + 1]
+        plot_spread(leg1_code, leg2_code)
+
+
 if __name__ == "__main__":
-    main()
+    grid_test()
