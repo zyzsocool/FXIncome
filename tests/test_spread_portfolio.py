@@ -27,7 +27,7 @@ class TestSpreadPortfolio:
             freq_type=FrequencyTypes.ANNUAL,
             accrual_type=DayCountTypes.ACT_ACT_ICMA,
             face_amount=ONE_MILLION * 50)
-        df = pd.read_csv('./test_data.csv', parse_dates=['begin', 'end'])
+        df = pd.read_csv('test_data/test_spread_portfolio_data.csv', parse_dates=['begin', 'end'])
         return {'bond_short': bond_short,
                 'bond_long': bond_long,
                 'df': df

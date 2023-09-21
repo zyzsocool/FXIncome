@@ -428,11 +428,13 @@ class GridStrategy(SpreadStrategy):
         for i in range(
             len(self.conditions) - 1, -1, -1
         ):  # spread conditions from small to large.
+            # Position increases as the spread decreases. Position must NOT exceed SIZE.
             buy_size = self.unit_size * (i + 1) - self.long_position
             if self.spread[0] <= self.conditions[i] and buy_size > 0:
                 self.buy(data=self.data, size=buy_size)
                 self.buy_records.append((self.spread[0], buy_size))
                 self.long_position += buy_size
+                break
 
         self.result.loc[self.result["DATE"] == self.data.datetime.date(0), "Profit"] = (
             self.broker.getvalue() - self.INIT_CASH
