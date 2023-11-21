@@ -159,6 +159,7 @@ class YieldTaxWind(tk.Frame):
         issue_date, maturity_date, sec_name, coupon_type, coupon, coupon_freq = YieldTaxWind.get_bond_data_by_wind(
             bond_code)
         settlement_date = Date(t.day, t.month, t.year)
+        print(settlement_date)
         remaining_years = (DayCount(DayCountTypes.ACT_ACT_ISDA).year_frac(settlement_date, maturity_date)[0])
         if coupon_type == '贴现':
             alpha = (1 - (DayCount(DayCountTypes.ACT_365L).year_frac(maturity_date.add_tenor("-12M"), settlement_date,
@@ -177,8 +178,8 @@ class YieldTaxWind(tk.Frame):
                 freq_type = FrequencyTypes.QUARTERLY
             else:
                 freq_type = FrequencyTypes.ANNUAL
-            bond = Bond(issue_date, maturity_date, coupon, freq_type, accrual_type, face)
-            full_price = bond.full_price_from_ytm(settlement_date, ytm, YTMCalcType.US_STREET)
+            bond = Bond(issue_date, maturity_date, coupon, freq_type, accrual_type)
+            full_price = bond.dirty_price_from_ytm(settlement_date, ytm, YTMCalcType.CFETS)
             f = annual_frequency(bond._freq_type)
             c = bond._coupon
             n = 0
