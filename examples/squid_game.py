@@ -1,9 +1,7 @@
 import random
-from typing import List
 
 
-def simulate_game(disadvantage: int = 0) -> List[str]:
-    #  disadvantage is either 0, 1, 2 or 3
+def simulate_game(disadvantage: int = 0):
     if disadvantage not in [0, 1, 2, 3]:
         raise ValueError("disadvantage must be either 0, 1, 2 or 3")
 
