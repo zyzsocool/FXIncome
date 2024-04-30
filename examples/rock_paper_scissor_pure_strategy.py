@@ -32,12 +32,11 @@ def find_best_a(cpus, num_games=1000):
         min_max_score = float("inf")
         for a_s in tqdm(np.arange(0, 1.01, 0.01), desc="Calculating best strategies for A"):
             a_r = 1 - a_s
+            # Pure strategies for B
             scores_list = []
-            for b_p in np.arange(0, 1.01, 0.01):
-                for b_r in np.arange(0, 1.01 - b_p, 0.01):
-                    b_s = 1 - b_p - b_r
-                    args_list = [(num_games, a_s, a_r, b_p, b_r, b_s) for _ in range(cpus)]
-                    scores_list.extend(p.starmap(simulate_games, args_list))
+            for b_p, b_r, b_s in [(1, 0, 0), (0, 1, 0), (0, 0, 1)]:
+                args_list = [(num_games, a_s, a_r, b_p, b_r, b_s) for _ in range(cpus)]
+                scores_list.extend(p.starmap(simulate_games, args_list))
             max_b_score = max(scores["B"] for scores in scores_list)
             if max_b_score < min_max_score:
                 min_max_score = max_b_score
@@ -53,9 +52,9 @@ def find_best_b(cpus, num_games=1000):
         for b_s in tqdm(np.arange(0, 1.01, 0.01), desc="Calculating best strategies for B"):
             for b_r in np.arange(0, 1.01, 0.01):
                 b_p = 1 - b_s - b_r
+                # Pure strategies for A
                 scores_list = []
-                for a_s in np.arange(0, 1.01, 0.01):
-                    a_r = 1 - a_s
+                for a_s, a_r in [(1, 0), (0, 1)]:
                     args_list = [
                         (num_games, a_s, a_r, b_p, b_r, b_s) for _ in range(cpus)
                     ]
@@ -73,13 +72,13 @@ def main():
     cpus = multiprocessing.cpu_count()
     print(f"Using {cpus} CPUs")
 
-    best_a_r, best_a_s = find_best_a(cpus,num_games=1000)
+    best_a_r, best_a_s = find_best_a(cpus, 10000)
     print(f"Best strategy for A: Scissors = {best_a_s}, Rock = {best_a_r}")
 
-    # best_b_p, best_b_r, best_b_s = find_best_b(cpus, 1000)
-    # print(
-    #     f"Best strategy for B: Scissors = {best_b_s}, Rock = {best_b_r}, Paper = {best_b_p}"
-    # )
+    best_b_p, best_b_r, best_b_s = find_best_b(cpus, 10000)
+    print(
+        f"Best strategy for B: Scissors = {best_b_s}, Rock = {best_b_r}, Paper = {best_b_p}"
+    )
 
 
 if __name__ == "__main__":
