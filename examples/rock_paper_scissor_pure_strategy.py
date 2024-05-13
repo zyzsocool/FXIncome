@@ -30,7 +30,7 @@ def find_best_a(cpus, num_games=1000):
     best_a_s = best_a_r = 0
     with Pool(cpus) as p:
         min_max_score = float("inf")
-        for a_s in tqdm(np.arange(0, 1.01, 0.01), desc="Calculating best strategies for A"):
+        for a_s in tqdm(np.arange(0, 1.01, 0.005), desc="Calculating best strategies for A"):
             a_r = 1 - a_s
             # Pure strategies for B
             scores_list = []
@@ -75,10 +75,10 @@ def main():
     best_a_r, best_a_s = find_best_a(cpus, 10000)
     print(f"Best strategy for A: Scissors = {best_a_s}, Rock = {best_a_r}")
 
-    best_b_p, best_b_r, best_b_s = find_best_b(cpus, 10000)
-    print(
-        f"Best strategy for B: Scissors = {best_b_s}, Rock = {best_b_r}, Paper = {best_b_p}"
-    )
+    # best_b_p, best_b_r, best_b_s = find_best_b(cpus, 1000)
+    # print(
+    #     f"Best strategy for B: Scissors = {best_b_s}, Rock = {best_b_r}, Paper = {best_b_p}"
+    # )
 
 
 if __name__ == "__main__":
