@@ -5,9 +5,9 @@ import os
 from ydata_profiling import ProfileReport
 
 ROOT_PATH = "d:/ProjectRicequant/fxincome/strategies_pool"
-# SRC_NAME = "history_processed.csv"
-SRC_NAME = "history_similarity.csv"
+SRC_NAME = "similarity_matrix_cosine.csv"
+# SRC_NAME = "similarity_matrix_euclidean.csv"
 
-data = pd.read_csv(os.path.join(ROOT_PATH, SRC_NAME), parse_dates=["date"])
+data = pd.read_csv(os.path.join(ROOT_PATH, SRC_NAME), parse_dates=["date_1","date_2"])
 profile = ProfileReport(data, title="Pandas Profiling Report")
-profile.to_file("d:/history_similarity_stats.html")
+profile.to_file(f"d:/{SRC_NAME}.html")

@@ -2,17 +2,16 @@
 import pandas as pd
 import os
 from pandas import DataFrame
-from scipy.spatial import distance
-from fxincome import logger, const
+from fxincome import const
 
 
 def process(
     df: DataFrame,
     yield_percentile_window=5 * 250,
     yield_chg_window_long=20,
-    yield_chg_window_short=5,
+    yield_chg_window_short=10,
     yield_chg_percentile_window=5 * 250,
-    stock_return_window=5,
+    stock_return_window=10,
 ):
     # Only bond trade days remain.
     df = df.dropna(subset=["t_10y", "t_1y"])
@@ -75,6 +74,14 @@ def process(
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
 
+    # Generate new columns:
+    # yield_chg_fwd_5, yield_chg_fwd_10, yield_chg_fwd_20, yield_chg_fwd_30.
+    # yield_chg_fwd_n = t_10y(t+n) - t_10y(t)
+
+    df = df.copy()
+    for days in [5, 10, 20, 30]:
+        df[f"yield_chg_fwd_{days}"] = df["t_10y"].shift(-days) - df["t_10y"]
+
     return df
 
 
@@ -86,10 +93,12 @@ if __name__ == "__main__":
     YIELD_PERCENTILE_WINDOW = 5 * 250
     YIELD_CHG_PERCENTILE_WINDOW = 5 * 250
     YIELD_CHG_WINDOW_LONG = 20
-    YIELD_CHG_WINDOW_SHORT = 5
-    STOCK_RETURN_WINDOW = 5
+    YIELD_CHG_WINDOW_SHORT = 10
+    STOCK_RETURN_WINDOW = 10
 
-    data = pd.read_csv(os.path.join(const.PATH.STRATEGY_POOL, SRC_NAME), parse_dates=["date"])
+    data = pd.read_csv(
+        os.path.join(const.PATH.STRATEGY_POOL, SRC_NAME), parse_dates=["date"]
+    )
     data = process(
         df=data,
         yield_percentile_window=YIELD_PERCENTILE_WINDOW,
@@ -98,4 +107,6 @@ if __name__ == "__main__":
         yield_chg_window_short=YIELD_CHG_WINDOW_SHORT,
         stock_return_window=STOCK_RETURN_WINDOW,
     )
-    data.to_csv(os.path.join(const.PATH.STRATEGY_POOL, DEST_NAME), index=False, encoding="utf-8")
+    data.to_csv(
+        os.path.join(const.PATH.STRATEGY_POOL, DEST_NAME), index=False, encoding="utf-8"
+    )
