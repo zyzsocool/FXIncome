@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 import pandas as pd
 import os
+import scipy
 from pandas import DataFrame
 from fxincome import const
 
 
-def process(
+def feature_engineering(
     df: DataFrame,
     yield_percentile_window=5 * 250,
     yield_chg_window_long=20,
@@ -85,10 +86,48 @@ def process(
     return df
 
 
-if __name__ == "__main__":
+def calculate_all_similarity(df, features: list, metric="cosine"):
+    """
+    Calculate the Euclidean distance between each pair of rows in a DataFrame for the given features.
 
-    SRC_NAME = "history_similarity.csv"
-    DEST_NAME = "history_processed.csv"
+    Args:
+        df (DataFrame): The input DataFrame containing the data. It must include a 'date' column.
+        features (list): The list of feature column names to be used in the distance calculation.
+        metric (str): The type of similarity. Must be either "euclidean" or "cosine".
+    Returns:
+        tuple: A tuple containing two elements:
+            - similarity_list (list): A list of tuples where each tuple is of the form (distance, date1, date2).
+              The distance is the Euclidean distance between the rows corresponding to date1 and date2.
+            - similarity_df (DataFrame): A DataFrame with the same information as in similarity_list,
+              but with 'date1' and 'date2' as the index and 'distance' as the column.
+    """
+    if metric not in ["euclidean", "cosine"]:
+        raise ValueError("sim_type must be either 'euclidean' or 'cosine'")
+
+    # Separate dates from features
+    dates = df["date"]
+    feature_data = df[features].values
+
+    # The result is a 2D array where the element at position (i, j) is
+    # the distance between the i-th and j-th row of the DataFrame
+    distances = scipy.spatial.distance.cdist(feature_data, feature_data, metric=metric)
+
+    # Create a 2D list of tuples (distance, date1, date2)
+    similarity_list = []
+    for i in range(len(distances)):
+        for j in range(len(distances[i])):
+            similarity_list.append((distances[i][j], dates[i], dates[j]))
+
+    # Convert the list of tuples to a DataFrame
+    similarity_df = pd.DataFrame(
+        similarity_list, columns=["distance", "date_1", "date_2"]
+    )
+    similarity_df = similarity_df.set_index("distance")
+
+    return similarity_list, similarity_df
+
+
+if __name__ == "__main__":
 
     YIELD_PERCENTILE_WINDOW = 5 * 250
     YIELD_CHG_PERCENTILE_WINDOW = 5 * 250
@@ -97,9 +136,10 @@ if __name__ == "__main__":
     STOCK_RETURN_WINDOW = 10
 
     data = pd.read_csv(
-        os.path.join(const.PATH.STRATEGY_POOL, SRC_NAME), parse_dates=["date"]
+        os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SRC_NAME),
+        parse_dates=["date"],
     )
-    data = process(
+    data = feature_engineering(
         df=data,
         yield_percentile_window=YIELD_PERCENTILE_WINDOW,
         yield_chg_percentile_window=YIELD_CHG_PERCENTILE_WINDOW,
@@ -108,5 +148,27 @@ if __name__ == "__main__":
         stock_return_window=STOCK_RETURN_WINDOW,
     )
     data.to_csv(
-        os.path.join(const.PATH.STRATEGY_POOL, DEST_NAME), index=False, encoding="utf-8"
+        os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.FEATURE_FILE),
+        index=False,
+        encoding="utf-8",
+    )
+
+    data = data.dropna().reset_index(drop=True)
+
+    _, distance_df = calculate_all_similarity(
+        data, const.HistorySimilarity.FEATURES, metric="euclidean"
+    )
+
+    distance_df.to_csv(
+        os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_EUCLIDEAN),
+        encoding="utf-8",
+    )
+
+    _, distance_df = calculate_all_similarity(
+        data, const.HistorySimilarity.FEATURES, metric="cosine"
+    )
+
+    distance_df.to_csv(
+        os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_COSINE),
+        encoding="utf-8",
     )

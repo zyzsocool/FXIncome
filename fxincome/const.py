@@ -300,3 +300,7 @@ class HistorySimilarity:
         "t_10y_yield_chg_short_percentile",
         "t_1y_yield_chg_short_percentile",
     ]
+    SRC_NAME: str = "history_similarity.csv"
+    FEATURE_FILE: str = "history_processed.csv"
+    SIMI_EUCLIDEAN: str = "similarity_matrix_euclidean.csv"
+    SIMI_COSINE: str = "similarity_matrix_cosine.csv"
