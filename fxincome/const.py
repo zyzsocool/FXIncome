@@ -289,16 +289,18 @@ class SPREAD:
 
 class HistorySimilarity:
     FEATURES = [
-        "t_10y_yield_chg_long",
+        # "t_10y_yield_chg_long",
         "t_10y_yield_chg_short",
         "t_1y_yield_chg_short",
-        "stock_return",
-        "t_10y_percentile",
-        "t_1y_percentile",
-        "t_us_cn_10y_spread_percentile",
-        "t_10y_yield_chg_long_percentile",
-        "t_10y_yield_chg_short_percentile",
-        "t_1y_yield_chg_short_percentile",
+        # "stock_return",
+        # "hs300_pctl",
+        "stock_return_pctl",
+        "t_10y_pctl",
+        "t_1y_pctl",
+        "t_us_cn_10y_spread_pctl",
+        # "t_10y_yield_chg_long_pctl",
+        "t_10y_yield_chg_short_pctl",
+        "t_1y_yield_chg_short_pctl",
     ]
     SRC_NAME: str = "history_similarity.csv"
     FEATURE_FILE: str = "history_processed.csv"

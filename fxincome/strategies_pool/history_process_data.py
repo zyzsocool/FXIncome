@@ -8,11 +8,13 @@ from fxincome import const
 
 def feature_engineering(
     df: DataFrame,
-    yield_percentile_window=5 * 250,
+    yield_pctl_window=5 * 250,
     yield_chg_window_long=20,
     yield_chg_window_short=10,
-    yield_chg_percentile_window=5 * 250,
+    yield_chg_pctl_window=5 * 250,
     stock_return_window=10,
+    stock_return_pctl_window=5 * 250,
+    hs300_pctl_window=5 * 250,
 ):
     # Only bond trade days remain.
     df = df.dropna(subset=["t_10y", "t_1y"])
@@ -40,38 +42,49 @@ def feature_engineering(
     df.loc[:, ["stock_return"]] = (
         df["hs300"] / df["hs300"].shift(stock_return_window) - 1
     )
+    df.loc[:, ["stock_return_pctl"]] = (
+        df["stock_return"]
+        .rolling(stock_return_pctl_window)
+        .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
+    )
+    df.loc[:, ["hs300_pctl"]] = (
+        df["hs300"]
+        .rolling(hs300_pctl_window)
+        .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
+    )
+
     # Calculate the percentiles of 10-year Chinese Treasury bond yield, 1-year Chinese Treasury bond yield, 10-year US
     # Treasury and Chinese Treasury spread for the past "yield percentile window".
-    df.loc[:, ["t_10y_percentile"]] = (
+    df.loc[:, ["t_10y_pctl"]] = (
         df["t_10y"]
-        .rolling(yield_percentile_window)
+        .rolling(yield_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
-    df.loc[:, ["t_1y_percentile"]] = (
+    df.loc[:, ["t_1y_pctl"]] = (
         df["t_1y"]
-        .rolling(yield_percentile_window)
+        .rolling(yield_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
-    df.loc[:, ["t_us_cn_10y_spread_percentile"]] = (
+    df.loc[:, ["t_us_cn_10y_spread_pctl"]] = (
         df["t_us_cn_10y_spread"]
-        .rolling(yield_percentile_window)
+        .rolling(yield_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
 
     # Calculate the percentiles of 10y_yield_change and 1y_yield_change for the past "yield change percentile window".
-    df.loc[:, ["t_10y_yield_chg_long_percentile"]] = (
+    df.loc[:, ["t_10y_yield_chg_long_pctl"]] = (
         df["t_10y_yield_chg_long"]
-        .rolling(yield_chg_percentile_window)
+        .rolling(yield_chg_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
-    df.loc[:, ["t_10y_yield_chg_short_percentile"]] = (
+    df.loc[:, ["t_10y_yield_chg_short_pctl"]] = (
         df["t_10y_yield_chg_short"]
-        .rolling(yield_chg_percentile_window)
+        .rolling(yield_chg_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
-    df.loc[:, ["t_1y_yield_chg_short_percentile"]] = (
+    df.loc[:, ["t_1y_yield_chg_short_pctl"]] = (
         df["t_1y_yield_chg_short"]
-        .rolling(yield_chg_percentile_window)
+        .rolling(yield_chg_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
 
@@ -129,11 +142,13 @@ def calculate_all_similarity(df, features: list, metric="cosine"):
 
 if __name__ == "__main__":
 
-    YIELD_PERCENTILE_WINDOW = 5 * 250
-    YIELD_CHG_PERCENTILE_WINDOW = 5 * 250
+    YIELD_PCTL_WINDOW = 5 * 250
+    YIELD_CHG_PCTL_WINDOW = 5 * 250
     YIELD_CHG_WINDOW_LONG = 20
     YIELD_CHG_WINDOW_SHORT = 10
     STOCK_RETURN_WINDOW = 10
+    STOCK_RETURN_PCTL_WINDOW = 5 * 250
+    HS300_PCTL_WINDOW = 5 * 250
 
     data = pd.read_csv(
         os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SRC_NAME),
@@ -141,11 +156,13 @@ if __name__ == "__main__":
     )
     data = feature_engineering(
         df=data,
-        yield_percentile_window=YIELD_PERCENTILE_WINDOW,
-        yield_chg_percentile_window=YIELD_CHG_PERCENTILE_WINDOW,
+        yield_pctl_window=YIELD_PCTL_WINDOW,
+        yield_chg_pctl_window=YIELD_CHG_PCTL_WINDOW,
         yield_chg_window_long=YIELD_CHG_WINDOW_LONG,
         yield_chg_window_short=YIELD_CHG_WINDOW_SHORT,
         stock_return_window=STOCK_RETURN_WINDOW,
+        stock_return_pctl_window=STOCK_RETURN_PCTL_WINDOW,
+        hs300_pctl_window=HS300_PCTL_WINDOW,
     )
     data.to_csv(
         os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.FEATURE_FILE),
@@ -164,11 +181,11 @@ if __name__ == "__main__":
         encoding="utf-8",
     )
 
-    _, distance_df = calculate_all_similarity(
-        data, const.HistorySimilarity.FEATURES, metric="cosine"
-    )
-
-    distance_df.to_csv(
-        os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_COSINE),
-        encoding="utf-8",
-    )
+    # _, distance_df = calculate_all_similarity(
+    #     data, const.HistorySimilarity.FEATURES, metric="cosine"
+    # )
+    #
+    # distance_df.to_csv(
+    #     os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_COSINE),
+    #     encoding="utf-8",
+    # )

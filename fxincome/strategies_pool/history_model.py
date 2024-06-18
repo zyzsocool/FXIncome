@@ -20,7 +20,11 @@ def train_test_split(df: DataFrame, train_ratio: float = 0.8, gap: int = 30):
     data = df.sort_values(by="date")
     train_size = int(len(data) * train_ratio)
     train_df = data.iloc[:train_size]
-    test_df = data.iloc[(train_size + gap) :]
+    test_df = data.iloc[(train_size + gap):]
+
+    logger.info(f"train size: {len(train_df)}; test size: {len(test_df)}")
+    logger.info(f"train start date: {train_df['date'].iloc[0]}; train end date: {train_df['date'].iloc[-1]}")
+    logger.info(f"test start date: {test_df['date'].iloc[0]}; test end date: {test_df['date'].iloc[-1]}")
     return train_df, test_df
 
 
@@ -61,7 +65,8 @@ def avg_yield_chg(
     if close_rows.empty:
         return -99
     # Calculate weighted average of yield_chg_fwd, weighted by INVERSE of distance(smaller distance, higher weight)
-    weights = 1 / close_rows["distance"]
+    c = 0.5  # 'c' is used to smooth the weight differences caused by the inverse of the distance.
+    weights = 1 / (close_rows["distance"] + c)
     weights = weights / weights.sum()
     yield_chg_avg = (close_rows[yield_chg_fwd] * weights).sum()
 
@@ -120,7 +125,7 @@ def predict_yield_chg(
         axis=1,
     )
     test_df["real_chg"] = test_df[yield_chg_fwd].apply(lambda x: 1 if x > 0 else 0)
-    # Filter out rows where prediction is -99, which means no similar dates were found.
+    # Filter out rows where predictions are -99, which means no similar dates were found.
     valid_predictions = test_df[test_df["prediction"] != -99]
     valid_ratio = len(valid_predictions) / len(test_df)
     accuracy = (valid_predictions["prediction"] == valid_predictions["real_chg"]).mean()
@@ -143,12 +148,12 @@ if __name__ == "__main__":
     distance_df = pd.read_csv(data_path)
     sample_merged = pd.merge(sample_df, distance_df, left_on="date", right_on="date_1")
 
-    train_sample, test_sample = train_test_split(sample_df, train_ratio=0.8, gap=30)
+    train_sample, test_sample = train_test_split(sample_df, train_ratio=0.85, gap=30)
 
     predict_yield_chg(
         simi_df=sample_merged,
         test_df=test_sample,
         yield_chg_fwd="yield_chg_fwd_10",
         distance_min=0,
-        distance_max=0.2,
+        distance_max=1.0,
     )
