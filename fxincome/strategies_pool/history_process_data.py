@@ -108,36 +108,24 @@ def calculate_all_similarity(df, features: list, metric="cosine"):
         features (list): The list of feature column names to be used in the distance calculation.
         metric (str): The type of similarity. Must be either "euclidean" or "cosine".
     Returns:
-        tuple: A tuple containing two elements:
-            - similarity_list (list): A list of tuples where each tuple is of the form (distance, date1, date2).
-              The distance is the Euclidean distance between the rows corresponding to date1 and date2.
-            - similarity_df (DataFrame): A DataFrame with the same information as in similarity_list,
-              but with 'date1' and 'date2' as the index and 'distance' as the column.
+        similarity_matrix(DataFrame): A n * n matrix.
+                         Index and columns are the dates, and the values are the distances between index and dates.
     """
     if metric not in ["euclidean", "cosine"]:
         raise ValueError("sim_type must be either 'euclidean' or 'cosine'")
 
     # Separate dates from features
-    dates = df["date"]
+    dates = df["date"].dt.date
     feature_data = df[features].values
 
     # The result is a 2D array where the element at position (i, j) is
     # the distance between the i-th and j-th row of the DataFrame
     distances = scipy.spatial.distance.cdist(feature_data, feature_data, metric=metric)
 
-    # Create a 2D list of tuples (distance, date1, date2)
-    similarity_list = []
-    for i in range(len(distances)):
-        for j in range(len(distances[i])):
-            similarity_list.append((distances[i][j], dates[i], dates[j]))
+    # Create a DataFrame where index and columns are the dates, and the values are the distances
+    similarity_matrix = pd.DataFrame(distances, index=dates, columns=dates)
 
-    # Convert the list of tuples to a DataFrame
-    similarity_df = pd.DataFrame(
-        similarity_list, columns=["distance", "date_1", "date_2"]
-    )
-    similarity_df = similarity_df.set_index("distance")
-
-    return similarity_list, similarity_df
+    return similarity_matrix
 
 
 if __name__ == "__main__":
@@ -172,20 +160,22 @@ if __name__ == "__main__":
 
     data = data.dropna().reset_index(drop=True)
 
-    _, distance_df = calculate_all_similarity(
+    distance_df = calculate_all_similarity(
         data, const.HistorySimilarity.FEATURES, metric="euclidean"
     )
 
-    distance_df.to_csv(
+    distance_df.reset_index().rename(columns={'index': 'date'}).to_csv(
         os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_EUCLIDEAN),
         encoding="utf-8",
+        index=False
     )
 
-    # _, distance_df = calculate_all_similarity(
+    # distance_df = calculate_all_similarity(
     #     data, const.HistorySimilarity.FEATURES, metric="cosine"
     # )
     #
-    # distance_df.to_csv(
+    # distance_df.reset_index().rename(columns={'index': 'date'}).to_csv(
     #     os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_COSINE),
     #     encoding="utf-8",
+    #     index=False
     # )
