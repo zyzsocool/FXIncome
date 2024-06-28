@@ -154,7 +154,7 @@ if __name__ == "__main__":
     all_samples = all_samples.dropna().reset_index(drop=True)
     all_samples = all_samples[["date", YIELD_CHG_FWD_COL]]
 
-    data_path = os.path.join(const.PATH.STRATEGY_POOL, MATRIX_EUCLIDEAN)
+    data_path = os.path.join(const.PATH.STRATEGY_POOL, MATRIX_COSINE)
     distance_df = pd.read_csv(data_path)
 
     predict_yield_chg(
@@ -162,7 +162,7 @@ if __name__ == "__main__":
         sample_df=all_samples,
         yield_chg_fwd=YIELD_CHG_FWD_COL,
         distance_min=0,
-        distance_max=1.0,
+        distance_max=0.24,
         train_ratio=0.85,
         gap=30,
     )

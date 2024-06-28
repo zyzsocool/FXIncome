@@ -160,22 +160,22 @@ if __name__ == "__main__":
 
     data = data.dropna().reset_index(drop=True)
 
-    distance_df = calculate_all_similarity(
-        data, const.HistorySimilarity.FEATURES, metric="euclidean"
-    )
-
-    distance_df.reset_index().rename(columns={'index': 'date'}).to_csv(
-        os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_EUCLIDEAN),
-        encoding="utf-8",
-        index=False
-    )
-
     # distance_df = calculate_all_similarity(
-    #     data, const.HistorySimilarity.FEATURES, metric="cosine"
+    #     data, const.HistorySimilarity.FEATURES, metric="euclidean"
     # )
     #
     # distance_df.reset_index().rename(columns={'index': 'date'}).to_csv(
-    #     os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_COSINE),
+    #     os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_EUCLIDEAN),
     #     encoding="utf-8",
     #     index=False
     # )
+
+    distance_df = calculate_all_similarity(
+        data, const.HistorySimilarity.FEATURES, metric="cosine"
+    )
+
+    distance_df.reset_index().rename(columns={'index': 'date'}).to_csv(
+        os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_COSINE),
+        encoding="utf-8",
+        index=False
+    )

@@ -9,21 +9,23 @@ ROOT_PATH = const.PATH.STRATEGY_POOL
 
 def analyze_euclidean():
     src_name = "similarity_matrix_euclidean.csv"
-    data = pd.read_csv(
-        os.path.join(ROOT_PATH, src_name), parse_dates=["date_1", "date_2"]
-    )
+    data = pd.read_csv(os.path.join(ROOT_PATH, src_name)).drop(columns=["date"])
     data = data.dropna().reset_index(drop=True)
-    profile = ProfileReport(data, title="Euclidean Distance Report")
+
+    # Flatten the matrix to a vector
+    flattend_data = pd.DataFrame(data.values.ravel(), columns=["distance"])
+    profile = ProfileReport(flattend_data, title="Euclidean Distance Report")
     profile.to_file(f"d:/{src_name}.html")
 
 
 def analyze_cosine():
     src_name = "similarity_matrix_cosine.csv"
-    data = pd.read_csv(
-        os.path.join(ROOT_PATH, src_name), parse_dates=["date_1", "date_2"]
-    )
+    data = pd.read_csv(os.path.join(ROOT_PATH, src_name)).drop(columns=["date"])
     data = data.dropna().reset_index(drop=True)
-    profile = ProfileReport(data, title="Cosine Distance Report")
+
+    # Flatten the matrix to a vector
+    flattend_data = pd.DataFrame(data.values.ravel(), columns=["distance"])
+    profile = ProfileReport(flattend_data, title="Cosine Distance Report")
     profile.to_file(f"d:/{src_name}.html")
 
 
@@ -100,4 +102,5 @@ def check_date(distance_type: str):
 # distance_histogram("euclidean")
 # check_date("cosine")
 # analyze_features()
-analyze_euclidean()
+# analyze_euclidean()
+analyze_cosine()

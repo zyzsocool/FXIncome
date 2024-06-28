@@ -1,10 +1,9 @@
-import pandas as pd
-import os
+import scipy.stats as stats
 
-ROOT_PATH = "d:/ProjectRicequant/fxincome/strategies_pool"
-SRC_NAME = "history_processed.csv"
+# Define the set
+data_set = [1, 2, 3, 4,5]
 
-data = pd.read_csv(os.path.join(ROOT_PATH, SRC_NAME), parse_dates=["date"])
-# Assuming 'df' is your DataFrame and 'date' is the column with the dates
-trading_days_per_year = data.resample('Y', on='date').size()
-print(trading_days_per_year)
+# Calculate the percentile rank
+percentile_rank = stats.percentileofscore(data_set, 3) / 100
+
+print(percentile_rank)
