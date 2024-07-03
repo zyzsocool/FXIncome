@@ -302,6 +302,15 @@ class HistorySimilarity:
         "t_10y_yield_chg_short_pctl",
         "t_1y_yield_chg_short_pctl",
     ]
+
+    # yield_chg_fwd_n = t_10y(t+n) - t_10y(t)
+    LABELS = {
+        5: "yield_chg_fwd_5",
+        10: "yield_chg_fwd_10",
+        20: "yield_chg_fwd_20",
+        30: "yield_chg_fwd_30",
+    }
+
     SRC_NAME: str = "history_similarity.csv"
     FEATURE_FILE: str = "history_processed.csv"
     SIMI_EUCLIDEAN: str = "similarity_matrix_euclidean.csv"

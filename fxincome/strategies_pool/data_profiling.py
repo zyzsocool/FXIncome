@@ -14,7 +14,12 @@ def analyze_euclidean():
 
     # Flatten the matrix to a vector
     flattend_data = pd.DataFrame(data.values.ravel(), columns=["distance"])
-    profile = ProfileReport(flattend_data, title="Euclidean Distance Report")
+    profile = ProfileReport(
+        flattend_data,
+        title="Euclidean Distance Report",
+        correlations=None,
+        interactions=None,
+    )
     profile.to_file(f"d:/{src_name}.html")
 
 
@@ -25,7 +30,12 @@ def analyze_cosine():
 
     # Flatten the matrix to a vector
     flattend_data = pd.DataFrame(data.values.ravel(), columns=["distance"])
-    profile = ProfileReport(flattend_data, title="Cosine Distance Report")
+    profile = ProfileReport(
+        flattend_data,
+        title="Cosine Distance Report",
+        correlations=None,
+        interactions=None,
+    )
     profile.to_file(f"d:/{src_name}.html")
 
 
@@ -37,7 +47,12 @@ def analyze_features():
         lambda x: 1 if x > 0 else 0
     )
     data = data.dropna().reset_index(drop=True)
-    profile = ProfileReport(data, title="Features Report")
+    profile = ProfileReport(
+        data,
+        title="Features Report",
+        correlations=None,
+        interactions=None,
+    )
     profile.to_file(f"d:/{src_name}.html")
 
 
@@ -46,45 +61,65 @@ def distance_histogram(distance_type: str):
     data_path = os.path.join(const.PATH.STRATEGY_POOL, src_name)
     distance_df = pd.read_csv(data_path)
 
-    # Convert 'date_1' and 'date_2' to datetime format
-    distance_df["date_1"] = pd.to_datetime(distance_df["date_1"])
+    # Melt the DataFrame to have each date pair in a separate row
+    distance_df = distance_df.melt(
+        id_vars="date", var_name="date_2", value_name="distance"
+    )
+
+    # Calculate the days between each date pair
+    distance_df["date"] = pd.to_datetime(distance_df["date"])
     distance_df["date_2"] = pd.to_datetime(distance_df["date_2"])
-    # Calculate the absolute difference in days between 'date_1' and 'date_2'
-    distance_df["date_diff"] = (
-        (distance_df["date_1"] - distance_df["date_2"]).abs().dt.days
-    )
-    # Define the date ranges
-    max_diff = distance_df["date_diff"].max()
-    n_ranges = 100
-    logger.info(f"max_date_diff: {max_diff}")
-    logger.info(f"n_ranges: {n_ranges}")
-    ranges = [
-        (i * max_diff / n_ranges, (i + 1) * max_diff / n_ranges)
-        for i in range(n_ranges)
-    ]
-    # Calculate the average distance for each range
-    avg_distances = []
-    for date_range in ranges:
-        avg_distance = distance_df[
-            (distance_df["date_diff"] > date_range[0])
-            & (distance_df["date_diff"] <= date_range[1])
-        ]["distance"].mean()
-        avg_distances.append(avg_distance)
-    # Create a DataFrame with the average distances and their corresponding ranges
-    avg_distances_df = pd.DataFrame(
-        {
-            "Range": [f"{int(r[0])}-{int(r[1])}" for r in ranges],
-            "Average Distance": avg_distances,
-        }
-    )
-    # Plot the average distances for each range
+    distance_df["days_between"] = (distance_df["date_2"] - distance_df["date"]).dt.days
+
+    # Only consider date pairs where the second date is later than the first date
+    distance_df = distance_df[distance_df["days_between"] > 0]
+    # Divide the distances into 100 scopes based on the days between
+    distance_df["scope"] = pd.cut(distance_df["days_between"], bins=100)
+
+    # Calculate the average distances of each scope
+    avg_distances = distance_df.groupby("scope", observed=False)["distance"].mean()
+
+    # Plot the average distances
     plt.figure(figsize=(10, 6))
-    plt.bar(avg_distances_df["Range"], avg_distances_df["Average Distance"])
-    plt.xlabel("Date Range (days)")
-    plt.ylabel("Average Distance")
-    plt.title("Average Distance for Different Date Ranges")
-    plt.xticks(rotation=45)
+    avg_distances.plot(kind="bar")
+    plt.title(f"Average {distance_type} distances for each scope")
+    plt.xlabel("Scope (days between)")
+    plt.ylabel("Average distance")
     plt.show()
+
+
+def compare_inverse_weights(distance_type: str):
+    src_name = f"similarity_matrix_{distance_type}.csv"
+    data_path = os.path.join(const.PATH.STRATEGY_POOL, src_name)
+    distance_df = pd.read_csv(data_path)
+
+    # Melt the DataFrame to have each date pair in a separate row
+    distance_df = distance_df.melt(
+        id_vars="date", var_name="date_2", value_name="distance"
+    )
+
+    # Calculate the days between each date pair
+    distance_df["date"] = pd.to_datetime(distance_df["date"])
+    distance_df["date_2"] = pd.to_datetime(distance_df["date_2"])
+    distance_df["days_between"] = (distance_df["date_2"] - distance_df["date"]).dt.days
+
+    # Only consider date pairs where the second date is later than the first date
+    distance_df = distance_df[distance_df["days_between"] > 0]
+
+    distance_df["weight_original"] = distance_df["distance"] / distance_df["distance"].sum()
+    for c in [0, 0.1, 0.5, 1, 5, 10]:
+        weights = 1 / (distance_df["distance"] + c)
+        weights = weights / weights.sum()
+        distance_df[f"weight_{c}"] = weights
+    distance_df = distance_df[[f"weight_{c}" for c in [0, 0.1, 0.5, 1, 5, 10]] + ["weight_original"]]
+    distance_df = distance_df * 1e5
+    profile = ProfileReport(
+        distance_df,
+        title="Different Inverse Weights",
+        correlations=None,
+        interactions=None,
+    )
+    profile.to_file(f"d:/different_inverse_weights_{distance_type}.html")
 
 
 def check_date(distance_type: str):
@@ -103,4 +138,5 @@ def check_date(distance_type: str):
 # check_date("cosine")
 # analyze_features()
 # analyze_euclidean()
-analyze_cosine()
+# analyze_cosine()
+compare_inverse_weights("euclidean")

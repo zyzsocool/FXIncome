@@ -1,9 +1,15 @@
-import scipy.stats as stats
+import pandas as pd
+import os
+from pandas import DataFrame
+from fxincome import logger, const
 
-# Define the set
-data_set = [1, 2, 3, 4,5]
+data_path = os.path.join(const.PATH.STRATEGY_POOL, "history_processed.csv")
+all_samples = pd.read_csv(data_path)
+all_samples = all_samples.dropna().reset_index(drop=True)
 
-# Calculate the percentile rank
-percentile_rank = stats.percentileofscore(data_set, 3) / 100
+for day, name in const.HistorySimilarity.LABELS.items():
+    all_samples[f"actual_{day}"] = all_samples[name].apply(lambda x: 1 if x > 0 else 0)
 
-print(percentile_rank)
+# Print the ratios of positive values in all_samples[f"actual_{day}"]
+for day in const.HistorySimilarity.LABELS.keys():
+    logger.info(f"Actual positive ratio for {day}: {all_samples[f'actual_{day}'].sum()/len(all_samples)}")

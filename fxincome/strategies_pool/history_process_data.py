@@ -88,18 +88,16 @@ def feature_engineering(
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
 
-    # Generate new columns:
-    # yield_chg_fwd_5, yield_chg_fwd_10, yield_chg_fwd_20, yield_chg_fwd_30.
     # yield_chg_fwd_n = t_10y(t+n) - t_10y(t)
-
     df = df.copy()
-    for days in [5, 10, 20, 30]:
-        df[f"yield_chg_fwd_{days}"] = df["t_10y"].shift(-days) - df["t_10y"]
+    # iterate const.HistorySimilarity.LABELS to generate label values.
+    for day, name in const.HistorySimilarity.LABELS.items():
+        df[name] = df["t_10y"].shift(-day) - df["t_10y"]
 
     return df
 
 
-def calculate_all_similarity(df, features: list, metric="cosine"):
+def calculate_all_similarity(df, features: list, metric="euclidean"):
     """
     Calculate the Euclidean distance between each pair of rows in a DataFrame for the given features.
 
@@ -160,15 +158,15 @@ if __name__ == "__main__":
 
     data = data.dropna().reset_index(drop=True)
 
-    # distance_df = calculate_all_similarity(
-    #     data, const.HistorySimilarity.FEATURES, metric="euclidean"
-    # )
-    #
-    # distance_df.reset_index().rename(columns={'index': 'date'}).to_csv(
-    #     os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_EUCLIDEAN),
-    #     encoding="utf-8",
-    #     index=False
-    # )
+    distance_df = calculate_all_similarity(
+        data, const.HistorySimilarity.FEATURES, metric="euclidean"
+    )
+
+    distance_df.reset_index().rename(columns={'index': 'date'}).to_csv(
+        os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_EUCLIDEAN),
+        encoding="utf-8",
+        index=False
+    )
 
     distance_df = calculate_all_similarity(
         data, const.HistorySimilarity.FEATURES, metric="cosine"
