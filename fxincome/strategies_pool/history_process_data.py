@@ -113,6 +113,7 @@ def calculate_all_similarity(df, features: list, metric="euclidean"):
         raise ValueError("sim_type must be either 'euclidean' or 'cosine'")
 
     # Separate dates from features
+    df = df.dropna(subset=features)
     dates = df["date"].dt.date
     feature_data = df[features].values
 
@@ -122,6 +123,10 @@ def calculate_all_similarity(df, features: list, metric="euclidean"):
 
     # Create a DataFrame where index and columns are the dates, and the values are the distances
     similarity_matrix = pd.DataFrame(distances, index=dates, columns=dates)
+    similarity_matrix = similarity_matrix.reset_index()
+    similarity_matrix = similarity_matrix.rename(columns={"index": "date"})
+
+    print(similarity_matrix.head())
 
     return similarity_matrix
 
@@ -156,13 +161,11 @@ if __name__ == "__main__":
         encoding="utf-8",
     )
 
-    data = data.dropna().reset_index(drop=True)
-
     distance_df = calculate_all_similarity(
         data, const.HistorySimilarity.FEATURES, metric="euclidean"
     )
 
-    distance_df.reset_index().rename(columns={'index': 'date'}).to_csv(
+    distance_df.to_csv(
         os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_EUCLIDEAN),
         encoding="utf-8",
         index=False

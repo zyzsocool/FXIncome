@@ -134,9 +134,24 @@ def check_date(distance_type: str):
     print(f"All date_2 are in date_1: {date_check_2.all()}")
 
 
+def analyze_predictions():
+    src_name = "predictions.csv"
+    data = pd.read_csv(os.path.join(ROOT_PATH, src_name)).drop(columns=["date"])
+    data = data.dropna().reset_index(drop=True)
+
+    profile = ProfileReport(
+        data,
+        title="Predictions Report",
+        correlations=None,
+        interactions=None,
+    )
+    profile.to_file(f"d:/{src_name}.html")
+
+
 # distance_histogram("euclidean")
 # check_date("cosine")
 # analyze_features()
 # analyze_euclidean()
 # analyze_cosine()
-compare_inverse_weights("euclidean")
+# compare_inverse_weights("euclidean")
+analyze_predictions()

@@ -1,15 +1,32 @@
 import pandas as pd
-import os
-from pandas import DataFrame
-from fxincome import logger, const
+from functools import reduce
+# First DataFrame
+data1 = {
+    'date': ['2023/1/2', '2023/2/1'],
+    '2024/7/5': [0.5, 0.7],
+    'yield_chg_fwd_5': [0.02, 0.03]
+}
+df1 = pd.DataFrame(data1)
 
-data_path = os.path.join(const.PATH.STRATEGY_POOL, "history_processed.csv")
-all_samples = pd.read_csv(data_path)
-all_samples = all_samples.dropna().reset_index(drop=True)
+# Second DataFrame
+data2 = {
+    'date': ['2023/1/2', '2023/2/1'],
+    '2024/7/5': [0.5, 0.7],
+    'yield_chg_fwd_10': [0.1, 0.5]
+}
+df2 = pd.DataFrame(data2)
 
-for day, name in const.HistorySimilarity.LABELS.items():
-    all_samples[f"actual_{day}"] = all_samples[name].apply(lambda x: 1 if x > 0 else 0)
+# Third DataFrame
+data3 = {
+    'date': ['2023/1/2', '2023/2/1'],
+    '2024/7/5': [0.5, 0.7],
+    'yield_chg_fwd_20': [0.1, 0.5]
+}
+df3 = pd.DataFrame(data3)
 
-# Print the ratios of positive values in all_samples[f"actual_{day}"]
-for day in const.HistorySimilarity.LABELS.keys():
-    logger.info(f"Actual positive ratio for {day}: {all_samples[f'actual_{day}'].sum()/len(all_samples)}")
+# Assuming df1, df2, df3 are your DataFrames
+dataframes = [df1, df2, df3]
+
+combined_df = reduce(lambda left, right: pd.merge(left, right, on='date', how='outer'), dataframes)
+
+print(combined_df)

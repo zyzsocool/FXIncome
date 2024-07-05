@@ -311,6 +311,16 @@ class HistorySimilarity:
         30: "yield_chg_fwd_30",
     }
 
+    PARAMS = {
+        "YIELD_PCTL_WINDOW": 5 * 250,
+        "YIELD_CHG_PCTL_WINDOW": 5 * 250,
+        "YIELD_CHG_WINDOW_LONG": 20,
+        "YIELD_CHG_WINDOW_SHORT": 10,
+        "STOCK_RETURN_WINDOW": 10,
+        "STOCK_RETURN_PCTL_WINDOW": 5 * 250,
+        "HS300_PCTL_WINDOW": 5 * 250,
+    }
+
     SRC_NAME: str = "history_similarity.csv"
     FEATURE_FILE: str = "history_processed.csv"
     SIMI_EUCLIDEAN: str = "similarity_matrix_euclidean.csv"
