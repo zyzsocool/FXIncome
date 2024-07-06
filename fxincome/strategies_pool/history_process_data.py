@@ -16,6 +16,10 @@ def feature_engineering(
     stock_return_pctl_window=5 * 250,
     hs300_pctl_window=5 * 250,
 ):
+    """
+    Dates' types are dt.date.
+    """
+    df["date"] = df["date"].dt.date
     # Only bond trade days remain.
     df = df.dropna(subset=["t_10y", "t_1y"])
     # For missing values of us treasury bonds and hs300, fill them with the previous value.
@@ -103,18 +107,20 @@ def calculate_all_similarity(df, features: list, metric="euclidean"):
 
     Args:
         df (DataFrame): The input DataFrame containing the data. It must include a 'date' column.
+                        Dates' types are supposed to be dt.date.
         features (list): The list of feature column names to be used in the distance calculation.
         metric (str): The type of similarity. Must be either "euclidean" or "cosine".
     Returns:
         similarity_matrix(DataFrame): A n * n matrix.
                          Index and columns are the dates, and the values are the distances between index and dates.
+                         Dates' types are the same as df['date'].
     """
     if metric not in ["euclidean", "cosine"]:
         raise ValueError("sim_type must be either 'euclidean' or 'cosine'")
 
     # Separate dates from features
     df = df.dropna(subset=features)
-    dates = df["date"].dt.date
+    dates = df["date"]
     feature_data = df[features].values
 
     # The result is a 2D array where the element at position (i, j) is
@@ -125,8 +131,6 @@ def calculate_all_similarity(df, features: list, metric="euclidean"):
     similarity_matrix = pd.DataFrame(distances, index=dates, columns=dates)
     similarity_matrix = similarity_matrix.reset_index()
     similarity_matrix = similarity_matrix.rename(columns={"index": "date"})
-
-    print(similarity_matrix.head())
 
     return similarity_matrix
 

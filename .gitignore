@@ -2,7 +2,6 @@
 /tools/*.xlsx
 /examples/results/
 /fxincome/spread/myeasylog.log
-/*.idea
-/*.iml
-/*.xml
+/.idea/*
+
 

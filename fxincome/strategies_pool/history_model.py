@@ -7,6 +7,7 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
+from datetime import datetime
 from pandas import DataFrame
 from fxincome import logger, handler, const
 from fxincome.strategies_pool.history_process_data import (
@@ -189,7 +190,7 @@ def predictions_test(
         logger.info(
             f"Valid_prediction_ratio: {len(valid_predictions) / len(test_df):.2f}"
         )
-        test_df.dropna(subset=[f"pred_{day}", f"actual_{day}"])
+        test_df = test_df.dropna(subset=[f"pred_{day}", f"actual_{day}"])
         pred_values = test_df[f"pred_{day}"]
         actual_values = test_df.loc[pred_values.index, f"actual_{day}"]
         print_prediction_stats(actual_values, pred_values)
@@ -211,7 +212,7 @@ def predict_yield_chg(
     of similar past dates, where the weights are calculated based on the similarity matrix.
 
     Args:
-        dates_to_pred (list): A list of dates(str'%Y-%m-%d') to predict yield change.
+        dates_to_pred (list): A list of dates(dt.date) to predict yield change.
         distance_min (float): included.
         distance_max (float): NOT included
         smooth_c(float): smooth the weight differences caused by the inverse of the distance.
@@ -243,14 +244,12 @@ def predict_yield_chg(
     )
     combined_df = history_df[["date"] + list(const.HistorySimilarity.LABELS.values())]
     # Change date type to string
-    combined_df['date'] = combined_df['date'].dt.strftime('%Y-%m-%d')
-    similarity_df['date'] = similarity_df['date'].apply(lambda x: x.strftime('%Y-%m-%d'))
+    # combined_df['date'] = combined_df['date'].dt.strftime('%Y-%m-%d')
 
     combined_df = pd.merge(combined_df, similarity_df, left_on="date", right_on="date")
 
     # Predict only on given dates.
-    result_df = combined_df[combined_df["date"].isin(dates_to_pred)]
-
+    result_df = combined_df[combined_df["date"].isin(dates_to_pred)].copy()
     # Predict
     similar_dates = []
     for index, row in result_df.iterrows():
@@ -296,18 +295,19 @@ if __name__ == "__main__":
     # predictions_test(
     #     simi_df=distance_df,
     #     sample_df=all_samples,
-    #     distance_min=0,
-    #     distance_max=1,
+    #     distance_min=0.00,
+    #     distance_max=0.9,
     #     smooth_c=2,
     #     train_ratio=0.9,
     #     gap=30,
     # )
 
-    dates_to_predict = ["2024-4-17", "2024-4-16"]
+    dates_to_predict = ["2024-04-17", "2024-04-16"]
+    dates_to_predict = [datetime.strptime(date_str, '%Y-%m-%d').date() for date_str in dates_to_predict]
     similar_dates_df = predict_yield_chg(
         dates_to_pred=dates_to_predict,
-        distance_min=0.0,
-        distance_max=1.0,
+        distance_min=0.001,
+        distance_max=0.12,
         smooth_c=2
     )
     for df in similar_dates_df:
