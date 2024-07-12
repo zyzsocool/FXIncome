@@ -50,7 +50,7 @@ def analyze_features():
     profile = ProfileReport(
         data,
         title="Features Report",
-        correlations=None,
+        # correlations=None,
         interactions=None,
     )
     profile.to_file(f"d:/{src_name}.html")
@@ -150,8 +150,8 @@ def analyze_predictions():
 
 # distance_histogram("euclidean")
 # check_date("cosine")
-# analyze_features()
+analyze_features()
 # analyze_euclidean()
 # analyze_cosine()
 # compare_inverse_weights("euclidean")
-analyze_predictions()
+# analyze_predictions()

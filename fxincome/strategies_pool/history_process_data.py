@@ -19,39 +19,33 @@ def feature_engineering(
     """
     Dates' types are dt.date.
     """
+    df = df.copy()
     df["date"] = df["date"].dt.date
     # Only bond trade days remain.
     df = df.dropna(subset=["t_10y", "t_1y"])
+
     # For missing values of us treasury bonds and hs300, fill them with the previous value.
-    df.loc[:, ["t_us_10y", "t_us_1y", "hs300"]] = df[
-        ["t_us_10y", "t_us_1y", "hs300"]
-    ].ffill()
-    df.loc[:, ["t_us_cn_10y_spread"]] = df["t_us_10y"] - df["t_10y"]
+    df[["t_us_10y", "t_us_1y", "hs300"]] = df[["t_us_10y", "t_us_1y", "hs300"]].ffill()
+    df["t_us_cn_10y_spread"] = df["t_us_10y"] - df["t_10y"]
 
     # 10-year Chinese Treasury bond yield change are calculated by short and long term.
     # 10y_yield_change_long = t_10y(t) / t_10y(t - yield_chg_window_long)
     # 10y_yield_change_short = t_10y(t) / t_10y(t - yield_chg_window_short)
     # 1y_yield_change_short = t_1y(t) / t_1y(t - yield_chg_window_short)
-    df.loc[:, ["t_10y_yield_chg_long"]] = df["t_10y"] - df["t_10y"].shift(
-        yield_chg_window_long
-    )
-    df.loc[:, ["t_10y_yield_chg_short"]] = df["t_10y"] - df["t_10y"].shift(
+    df["t_10y_yield_chg_long"] = df["t_10y"] - df["t_10y"].shift(yield_chg_window_long)
+    df["t_10y_yield_chg_short"] = df["t_10y"] - df["t_10y"].shift(
         yield_chg_window_short
     )
-    df.loc[:, ["t_1y_yield_chg_short"]] = df["t_1y"] - df["t_1y"].shift(
-        yield_chg_window_short
-    )
+    df["t_1y_yield_chg_short"] = df["t_1y"] - df["t_1y"].shift(yield_chg_window_short)
 
     # stock_return = hs300(t) / hs300(t - stock_return_window) - 1
-    df.loc[:, ["stock_return"]] = (
-        df["hs300"] / df["hs300"].shift(stock_return_window) - 1
-    )
-    df.loc[:, ["stock_return_pctl"]] = (
+    df["stock_return"] = df["hs300"] / df["hs300"].shift(stock_return_window) - 1
+    df["stock_return_pctl"] = (
         df["stock_return"]
         .rolling(stock_return_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
-    df.loc[:, ["hs300_pctl"]] = (
+    df["hs300_pctl"] = (
         df["hs300"]
         .rolling(hs300_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
@@ -59,45 +53,53 @@ def feature_engineering(
 
     # Calculate the percentiles of 10-year Chinese Treasury bond yield, 1-year Chinese Treasury bond yield, 10-year US
     # Treasury and Chinese Treasury spread for the past "yield percentile window".
-    df.loc[:, ["t_10y_pctl"]] = (
+    df["t_10y_pctl"] = (
         df["t_10y"]
         .rolling(yield_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
-    df.loc[:, ["t_1y_pctl"]] = (
+    df["t_1y_pctl"] = (
         df["t_1y"]
         .rolling(yield_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
-    df.loc[:, ["t_us_cn_10y_spread_pctl"]] = (
+    df["t_us_cn_10y_spread_pctl"] = (
         df["t_us_cn_10y_spread"]
         .rolling(yield_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
 
     # Calculate the percentiles of 10y_yield_change and 1y_yield_change for the past "yield change percentile window".
-    df.loc[:, ["t_10y_yield_chg_long_pctl"]] = (
+    df["t_10y_yield_chg_long_pctl"] = (
         df["t_10y_yield_chg_long"]
         .rolling(yield_chg_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
-    df.loc[:, ["t_10y_yield_chg_short_pctl"]] = (
+    df["t_10y_yield_chg_short_pctl"] = (
         df["t_10y_yield_chg_short"]
         .rolling(yield_chg_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
-    df.loc[:, ["t_1y_yield_chg_short_pctl"]] = (
+    df["t_1y_yield_chg_short_pctl"] = (
         df["t_1y_yield_chg_short"]
         .rolling(yield_chg_pctl_window)
         .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
     )
 
-    # yield_chg_fwd_n = t_10y(t+n) - t_10y(t)
-    df = df.copy()
+    df["avg_chg_5"] = (df["t_10y"] - df["t_10y"].rolling(5).mean()) / df[
+        "t_10y"
+    ].rolling(5).mean()
+    df["avg_chg_10"] = (df["t_10y"] - df["t_10y"].rolling(10).mean()) / df[
+        "t_10y"
+    ].rolling(10).mean()
+    df["avg_chg_20"] = (df["t_10y"] - df["t_10y"].rolling(20).mean()) / df[
+        "t_10y"
+    ].rolling(20).mean()
+
     # iterate const.HistorySimilarity.LABELS to generate label values.
+    # yield_chg_fwd_n = t_10y(t+n) - t_10y(t)
     for day, name in const.HistorySimilarity.LABELS.items():
         df[name] = df["t_10y"].shift(-day) - df["t_10y"]
-
     return df
 
 
@@ -172,15 +174,15 @@ if __name__ == "__main__":
     distance_df.to_csv(
         os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_EUCLIDEAN),
         encoding="utf-8",
-        index=False
+        index=False,
     )
 
     distance_df = calculate_all_similarity(
         data, const.HistorySimilarity.FEATURES, metric="cosine"
     )
 
-    distance_df.reset_index().rename(columns={'index': 'date'}).to_csv(
+    distance_df.to_csv(
         os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_COSINE),
         encoding="utf-8",
-        index=False
+        index=False,
     )

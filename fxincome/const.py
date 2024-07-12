@@ -301,6 +301,11 @@ class HistorySimilarity:
         # "t_10y_yield_chg_long_pctl",
         "t_10y_yield_chg_short_pctl",
         "t_1y_yield_chg_short_pctl",
+        # "t_10y",
+        # "t_1y",
+        # "avg_chg_5",
+        # "avg_chg_10",
+        # "avg_chg_20"
     ]
 
     # yield_chg_fwd_n = t_10y(t+n) - t_10y(t)
@@ -325,3 +330,4 @@ class HistorySimilarity:
     FEATURE_FILE: str = "history_processed.csv"
     SIMI_EUCLIDEAN: str = "similarity_matrix_euclidean.csv"
     SIMI_COSINE: str = "similarity_matrix_cosine.csv"
+    PREDICT_FILE: str = "predictions.csv"
