@@ -10,6 +10,8 @@ from fxincome import logger, handler, const
 
 
 class ETFData(bt.feeds.PandasData):
+    lines = ("turnover",)
+
     # 左边为lines里的名字，右边为dataframe column的名字
     params = (
         ("datetime", "date"),
@@ -49,6 +51,12 @@ class PredictStrategy(bt.Strategy):
         # None means no pending order
         self.order = None
 
+        # The first judgement day is the first day of backtest data.
+        total_days = self.getdatabyname(self.tb_name).buflen() - 1
+        self.judgement_day = self.getdatabyname(self.tb_name).datetime.date(-total_days)
+        self.END_DAY = self.getdatabyname(self.tb_name).datetime.date(0)
+        self.DAY_GAP = 5
+
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
             return
@@ -80,31 +88,47 @@ class PredictStrategy(bt.Strategy):
     def next(self):
         # Cancel the pending order if there is one
         self.cancel(self.order)
-        today = self.getdatabyname(self.tb_name).datetime.datetime(0)
-        preds = self.pred_df.query("date == @today")  # get ytm prediction for tomorrow
+        today = self.getdatabyname(self.tb_name).datetime.date(0)
+        logger.info(f"today: {today}; judgement_day: {self.judgement_day}")
+        if today != self.judgement_day:
+            return
+
+        # Update the judgement day to DAY_GAP days later
+        if (
+            self.getdatabyname(self.tb_name).datetime.date(0)
+            + datetime.timedelta(days=self.DAY_GAP)
+        ) <= self.END_DAY:
+            self.judgement_day = self.getdatabyname(self.tb_name).datetime.date(
+                self.DAY_GAP
+            )
+        else:
+            logger.info(f"End of backtest data")
+            return
+
+        preds = self.pred_df[self.pred_df["date"].dt.date == today]
+
         if len(preds) == 0:  # Do nothing if no prediction
+            logger.info(f"No prediction")
             return
         else:
-            pred = int(preds.soft_pred.iat[0])  # get Ensemble Soft Voter's prediction
-
-        # valid until the t+2 bar's next()
-        valid_day = self.getdatabyname(self.tb_name).datetime.datetime(1)
+            # prediction of ytm direction in next DAY_GAP trade days.
+            pred = int(preds[f"pred_{self.DAY_GAP}"].iat[0])
 
         if pred == 0:  # ytm down, price up, buy
             self.order = self.buy(
                 data=self.getdatabyname(self.tb_name),
                 size=self.__buy_all(self.close[0]),
-                price=self.close[0],  # buy at today's close price
-                exectype=bt.Order.Limit,
-                valid=valid_day,
+                price=None,  # buy at t+1's open price
+                exectype=bt.Order.Market,  # buy at t+1's open price
+                valid=None,
             )
         elif pred == 1:  # ytm up, price down, sell
             self.order = self.sell(
                 data=self.getdatabyname(self.tb_name),
                 size=self.__sell_all(),
-                price=self.close[0],  # sell at today's close price
-                exectype=bt.Order.Limit,
-                valid=valid_day,
+                price=None,  # sell at t+1's open price
+                exectype=bt.Order.Market,  # sell at t+1's open price
+                valid=None,
             )
         else:
             raise ValueError(f"The prediction is neither 0 nor 1")
@@ -176,7 +200,7 @@ class PredictStrategy(bt.Strategy):
 
 def main():
     # Create a cerebro entity
-    cerebro = bt.Cerebro()
+    cerebro = bt.Cerebro(tradehistory=True)
 
     # Add a strategy
     cerebro.addstrategy(PredictStrategy)
@@ -185,7 +209,13 @@ def main():
         os.path.join(const.PATH.STRATEGY_POOL, "511260.sh.csv"),
         parse_dates=["date"],
     )
-    price_df = price_df[price_df["date"] > datetime.datetime(2021, 4, 9)]
+    price_df = price_df[
+        (price_df["date"] > datetime.datetime(2022, 1, 1))
+        & (price_df["date"] < datetime.datetime(2024, 6, 1))
+    ]
+    numeric_cols = ["open", "high", "low", "close", "volume", "turnover"]
+    for col in numeric_cols:
+        price_df[col] = pd.to_numeric(price_df[col])
 
     # Pass it to the backtrader datafeed and add it to the cerebro
     data1 = ETFData(dataname=price_df, nocase=True)
@@ -216,7 +246,7 @@ def main():
     strategies = cerebro.run()
 
     # Plot the result
-    cerebro.plot(style='bar')
+    cerebro.plot(style="bar")
 
     broker = cerebro.broker
     print("Cash:" + str(broker.get_cash()))

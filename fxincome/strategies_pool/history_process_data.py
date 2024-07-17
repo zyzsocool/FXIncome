@@ -2,8 +2,9 @@
 import pandas as pd
 import os
 import scipy
+import datetime
 from pandas import DataFrame
-from fxincome import const
+from fxincome import const, logger
 
 
 def feature_engineering(
@@ -137,8 +138,47 @@ def calculate_all_similarity(df, features: list, metric="euclidean"):
     return similarity_matrix
 
 
-if __name__ == "__main__":
+def read_processed_data_from_csv(distance_type: str):
+    """
+    Read feature_label file and similarity matrix from csv files.
+    Convert objects of "date" column to dt.date type.
+    Convert column names of dates in similarity matrix to dt.date type.
 
+    Args:
+        distance_type(str): The type of distance. Must be either "euclidean" or "cosine".
+    Returns:
+        feature_lable_df(DataFrame): The feature_label DataFrame.
+        similarity_matrix(DataFrame): The similarity matrix DataFrame.
+    """
+    if distance_type not in ["euclidean", "cosine"]:
+        raise ValueError("distance_type must be either 'euclidean' or 'cosine'")
+    if distance_type == "euclidean":
+        simi_file = const.HistorySimilarity.SIMI_EUCLIDEAN
+    else:
+        simi_file = const.HistorySimilarity.SIMI_COSINE
+
+    data_path = os.path.join(const.PATH.STRATEGY_POOL, "history_processed.csv")
+    feature_label_df = pd.read_csv(data_path, parse_dates=["date"])
+    feature_label_df["date"] = feature_label_df["date"].dt.date
+
+    data_path = os.path.join(const.PATH.STRATEGY_POOL, simi_file)
+    similarity_matrix = pd.read_csv(data_path, parse_dates=["date"])
+    similarity_matrix["date"] = similarity_matrix["date"].dt.date
+    rename_dict = {}
+    for col in similarity_matrix.columns:
+        if col == "date":
+            continue
+        try:
+            rename_dict[col] = datetime.date.fromisoformat(col)
+        except ValueError:
+            logger.info(f"Column {col} is not in ISO format.")
+            continue
+    similarity_matrix = similarity_matrix.rename(columns=rename_dict)
+
+    return feature_label_df, similarity_matrix
+
+
+def main():
     YIELD_PCTL_WINDOW = 5 * 250
     YIELD_CHG_PCTL_WINDOW = 5 * 250
     YIELD_CHG_WINDOW_LONG = 20
@@ -186,3 +226,7 @@ if __name__ == "__main__":
         encoding="utf-8",
         index=False,
     )
+
+
+if __name__ == "__main__":
+    main()

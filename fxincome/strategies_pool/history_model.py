@@ -8,8 +8,10 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
-from datetime import datetime
+import datetime
 from pandas import DataFrame
+
+import fxincome.strategies_pool.history_process_data
 from fxincome import logger, handler, const
 from fxincome.strategies_pool.history_process_data import (
     feature_engineering,
@@ -81,7 +83,7 @@ def train_test_split(df: DataFrame, train_ratio: float = 0.8, gap: int = 30):
 
 
 def avg_yield_chg(
-    given_date: datetime.date,
+    given_date,
     simi_matrix_with_yield_chg,
     distance_min: float,
     distance_max: float,
@@ -96,7 +98,8 @@ def avg_yield_chg(
     are those within the range specified by distance_min(included) and distance_max(NOT included).
 
     Args:
-        given_date (datetime.date): Calculate other dates' weighted average yield change similar to this date.
+        given_date: Calculate other dates' weighted average yield change similar to this date.
+                    Its type should be of the same type as the date columns of simi_matrix_with_yield_chg.
         simi_matrix_with_yield_chg (DataFrame): The similarity matrix with yield changes.
         distance_min (float): included.
         distance_max (float): NOT included.
@@ -214,15 +217,12 @@ def predict_yield_chg(
 ):
     """
     Given some dates, predict the yield change direction in n days.
-    1. Read a raw csv file(Path: const.PATH.STRATEGY_POOL/const.HistorySimilarity.SRC_NAME) ,
-    which must include given dates.
-    2. The csv will be processed to generate similarity matrix, features and yield change labels.
-    3. The yield change direction is determined by yield_chg_fwd in the form of "yield_chg_fwd_n".
+    The yield change direction is determined by yield_chg_fwd in the form of "yield_chg_fwd_n".
     n must be either 5, 10, 20, or 30. The prediction is based on the weighted average yield change
     of similar past dates, where the weights are calculated based on the similarity matrix.
 
     Args:
-        dates_to_pred (list): A list of dates(dt.date) to predict yield change.
+        dates_to_pred (list): A list of dates(datetime.date) to predict yield change.
         similarity_df (DataFrame): Distance matrix, including column 'date'(m rows),
                                                               column ['2010-1-27', '2011-12-1'...](also m columns)
         sample_df (DataFrame): includes column 'date' and columns 'yield_chg_fwd_n'.
@@ -240,17 +240,19 @@ def predict_yield_chg(
 
     # Predict only on given dates.
     result_df = sample_df[sample_df["date"].isin(dates_to_pred)].copy()
-    # Remove the dates to predict from the combined_df
-    combined_df = combined_df[~combined_df["date"].isin(dates_to_pred)]
+
     # Predict
     similar_dates = {}
     for index, row in result_df.iterrows():
-        # History predictions for similar dates with the same date (row["date"])
+        # To record distances and labels for similar dates with the same date (row["date"])
         similar_dates_with_one_date = pd.DataFrame()
         for day, label_name in const.HistorySimilarity.LABELS.items():
+            # Use only past dates to predict the future
+            history_df = combined_df[combined_df["date"] < row["date"]]
+
             yield_chg_avg, close_rows = avg_yield_chg(
                 row["date"],
-                combined_df,
+                history_df,
                 yield_chg_fwd=label_name,
                 distance_min=distance_min,
                 distance_max=distance_max,
@@ -278,18 +280,14 @@ def predict_yield_chg(
     return result_df, similar_dates
 
 
-if __name__ == "__main__":
-    MATRIX_EUCLIDEAN = f"similarity_matrix_euclidean.csv"
-    MATRIX_COSINE = f"similarity_matrix_cosine.csv"
-
-    data_path = os.path.join(const.PATH.STRATEGY_POOL, "history_processed.csv")
-    all_samples = pd.read_csv(data_path)
-
-    data_path = os.path.join(const.PATH.STRATEGY_POOL, MATRIX_EUCLIDEAN)
-    distance_df = pd.read_csv(data_path)
-    #
+def main():
+    all_samples, distance_df = (
+        fxincome.strategies_pool.history_process_data.read_processed_data_from_csv(
+            "euclidean"
+        )
+    )
     # predictions_test(
-    #     simi_df=distance_df,
+    #     similarity_df=distance_df,
     #     sample_df=all_samples,
     #     distance_min=0.00,
     #     distance_max=0.25,
@@ -298,19 +296,24 @@ if __name__ == "__main__":
     #     gap=30,
     # )
 
-    dates_to_predict = ["2024-04-17", "2024-04-16"]
+    start_date = datetime.date(2022, 1, 1)
+    end_date = datetime.date(2024, 6, 1)
     dates_to_predict = [
-        datetime.strptime(date_str, "%Y-%m-%d").date() for date_str in dates_to_predict
+        start_date + datetime.timedelta(days=x)
+        for x in range((end_date - start_date).days + 1)
     ]
     predictions, similar_dates_dict = predict_yield_chg(
         dates_to_pred=dates_to_predict,
         similarity_df=distance_df,
         sample_df=all_samples,
         distance_min=0.00,
-        distance_max=0.12,
-        smooth_c=2,
+        distance_max=0.25,
+        smooth_c=5,
     )
-
     for date, similar_dates_df in similar_dates_dict.items():
         print(date)
         print(similar_dates_df)
+
+
+if __name__ == "__main__":
+    main()
