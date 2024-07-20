@@ -13,10 +13,6 @@ from pandas import DataFrame
 
 import fxincome.strategies_pool.history_process_data
 from fxincome import logger, handler, const
-from fxincome.strategies_pool.history_process_data import (
-    feature_engineering,
-    calculate_all_similarity,
-)
 
 
 def print_prediction_stats(train_df, test_df, distance_min, distance_max, smooth_c):
@@ -77,7 +73,7 @@ def train_test_split(df: DataFrame, train_ratio: float = 0.8, gap: int = 30):
     data = df.sort_values(by="date")
     train_size = int(len(data) * train_ratio)
     train_df = data.iloc[:train_size]
-    test_df = data.iloc[(train_size + gap) :]
+    test_df = data.iloc[(train_size + gap):]
 
     return train_df, test_df
 
