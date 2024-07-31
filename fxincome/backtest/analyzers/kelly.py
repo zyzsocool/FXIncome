@@ -12,7 +12,7 @@ class Kelly(Analyzer):
     那么效应函数为：
     f(x)=p ln(1 + r1x) + q ln(1 - r2x)
     最大化效应函数，求导，得到最优x为：
-    x = p/r2 + q/r1
+    x = p/r2 - q/r1
     """
 
     def create_analysis(self):

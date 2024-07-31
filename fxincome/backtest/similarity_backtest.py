@@ -17,7 +17,7 @@ from fxincome import logger, handler, const
 
 
 class ETFData(bt.feeds.PandasData):
-    lines = ("turnover",)
+    lines = ("turnover", "gc001")
 
     # 左边为lines里的名字，右边为dataframe column的名字
     params = (
@@ -29,6 +29,7 @@ class ETFData(bt.feeds.PandasData):
         ("volume", "volume"),  # 成交额，单位是元
         ("openinterest", -1),
         ("turnover", "turnover"),  # 换手率，单位是%
+        ("gc001", "GC001_close"),  # GC001 回购利率收盘价
     )
 
 
@@ -36,7 +37,8 @@ class ETFData(bt.feeds.PandasData):
 class Trader:
     judgement_day: datetime.date
     cash: float
-    commission_rate: float
+    bond_commission_rate: float
+    repo_commission_rate: float
     position: int = 0
 
     def buy_all(self, price: float) -> int:
@@ -48,8 +50,8 @@ class Trader:
         Returns:
             size(int): The size to buy, greater than or equal to 0
         """
-        size = math.floor(self.cash / (price * (1 + self.commission_rate)))
-        total_cost = size * price * (1 + self.commission_rate)
+        size = math.floor(self.cash / (price * (1 + self.bond_commission_rate)))
+        total_cost = size * price * (1 + self.bond_commission_rate)
         self.cash = self.cash - total_cost
         self.position = self.position + size
         return size
@@ -63,11 +65,26 @@ class Trader:
         Returns:
             size(int): The size to sell, greater than or equal to 0
         """
-        cash_received = self.position * price * (1 - self.commission_rate)
+        cash_received = self.position * price * (1 - self.bond_commission_rate)
         self.cash = self.cash + cash_received
         size = self.position
         self.position = 0
         return size
+
+    def reverse_repo(
+        self, rate: float, start_date: datetime.date, end_date: datetime.date
+    ):
+        """
+        Use all remaining cash to do reverse repo. Calculate the interest received from reverse repo, and update cash.
+        Args:
+            rate(float): The annualized interest rate. 0.01 for 1%.
+            start_date(datetime.date): The start date of reverse repo
+            end_date(datetime.date): The end date of reverse repo
+        """
+        days = (end_date - start_date).days
+        interest = self.cash * rate * days / 365
+        commission = self.cash * self.repo_commission_rate
+        self.cash = self.cash + interest - commission
 
 
 class NTraderStrategy(bt.Strategy):
@@ -86,36 +103,36 @@ class NTraderStrategy(bt.Strategy):
         pred_df=None,
     )
 
-    tb_name = "511260.SH"  # 国泰上证10年期国债ETF
+    etf_name = "511260.SH"  # 国泰上证10年期国债ETF
 
     def log(self, txt, dt=None):
         """Logging function for this strategy"""
-        dt = dt or self.data.datetime.date(0)
+        dt = dt or self.etf_data.datetime.date(0)
         print(f"{dt:%Y%m%d} - {txt}")
 
+    def total_value(self):
+        cash = sum([trader.cash for trader in self.traders])
+        position = sum([trader.position for trader in self.traders])
+        return cash + position * self.etf_data.close[0]
+
     def __init__(self):
-        self.data = self.getdatabyname(self.tb_name)
-        self.open = self.data.open
-        self.high = self.data.high
-        self.low = self.data.low
-        self.close = self.data.close
-        self.volume = self.data.volume
-        self.turnover = self.data.turnover
+        self.etf_data = self.getdatabyname(self.etf_name)
 
         # None means no pending order
         self.order = None
 
-        total_days = self.data.buflen() - 1
+        total_days = self.etf_data.buflen() - 1
 
-        commission_rate = self.broker.getcommissioninfo(self.data).p.commission
+        commission_rate = self.broker.getcommissioninfo(self.etf_data).p.commission
 
         self.traders = [
             Trader(
                 # The first n judgement days are the first n days of backtest data.
-                judgement_day=self.data.datetime.date(-total_days + n),
+                judgement_day=self.etf_data.datetime.date(-total_days + n),
                 cash=self.broker.get_cash() / self.p.num_traders,
                 position=0,
-                commission_rate=commission_rate,
+                bond_commission_rate=commission_rate,
+                repo_commission_rate=0.001 / 100,
             )
             for n in range(self.p.num_traders)
         ]
@@ -149,14 +166,22 @@ class NTraderStrategy(bt.Strategy):
             )
 
     def next(self):
-        today = self.data.datetime.date(0)
+        today = self.etf_data.datetime.date(0)
 
         for trader in self.traders:
+            # Do GC001 if today is not the last day of backtest data.
+            if len(self.etf_data) + 1 <= self.etf_data.buflen():
+                trader.reverse_repo(
+                    rate=self.etf_data.gc001[0] / 100,
+                    start_date=today,
+                    end_date=self.etf_data.datetime.date(1),
+                )
+            # Only on the judgement_day we decide whether to trade.
             if trader.judgement_day != today:
                 continue
             # Update the judgement day to pred_days later
-            if len(self.data) + self.p.pred_days <= self.data.buflen():
-                trader.judgement_day = self.data.datetime.date(self.p.pred_days)
+            if len(self.etf_data) + self.p.pred_days <= self.etf_data.buflen():
+                trader.judgement_day = self.etf_data.datetime.date(self.p.pred_days)
             else:
                 continue
 
@@ -171,16 +196,20 @@ class NTraderStrategy(bt.Strategy):
                 pred = preds[f"pred_{self.p.pred_days}"].iat[0]
             if pred == 0:  # ytm down, buy
                 self.order = self.buy(
-                    data=self.data,
-                    size=trader.buy_all(self.open[1]),  # buy at t+1's open price
+                    data=self.etf_data,
+                    size=trader.buy_all(
+                        self.etf_data.open[1]
+                    ),  # buy at t+1's open price
                     price=None,  # buy at t+1's open price
                     exectype=bt.Order.Market,  # buy at t+1's open price
                     valid=None,
                 )
             elif pred == 1:  # ytm up, sell
                 self.order = self.sell(
-                    data=self.data,
-                    size=trader.sell_all(self.open[1]),  # sell at t+1's open price
+                    data=self.etf_data,
+                    size=trader.sell_all(
+                        self.etf_data.open[1]
+                    ),  # sell at t+1's open price
                     price=None,  # sell at t+1's open price
                     exectype=bt.Order.Market,  # sell at t+1's open price
                     valid=None,
@@ -208,12 +237,12 @@ def run_backtest(
 
     # Add data to Cerebro
     data1 = ETFData(dataname=etf_price, nocase=True)
-    cerebro.adddata(data1, name=NTraderStrategy.tb_name)
+    cerebro.adddata(data1, name=NTraderStrategy.etf_name)
 
     cerebro.broker.set_fundmode(True, 1)
     cerebro.broker.set_cash(10000)
     cerebro.broker.setcommission(
-        commission=0.0002, name=NTraderStrategy.tb_name
+        commission=0.0002, name=NTraderStrategy.etf_name
     )  # commission is 0.02%
 
     #  Add analyzers
@@ -254,9 +283,10 @@ def print_backtest_result(cerebro, data1, strategy):
     print(cerebro.broker.getposition(data1))
     print("Traders Position:" + str(traders_position))
 
-    print("Value:" + str(broker.get_value()))
-    print("fund value:" + str(broker.get_fundvalue()))
-    print("fund share:" + str(broker.get_fundshares()))
+    print(f"Strategy Total Value: {strategy.total_value()}")
+    print("Broker Value:" + str(broker.get_value()))
+    print("Fund value:" + str(broker.get_fundvalue()))
+    print("Fund share:" + str(broker.get_fundshares()))
 
     sharp_ratio = strategy.analyzers.SharpRatio
     sqn = strategy.analyzers.SQN
@@ -298,10 +328,15 @@ def analyze_prediction(
 ):
     bond_pred, etf_price = read_predictions_prices(start_date, end_date)
 
-    tbond_df = pd.read_csv(os.path.join(const.PATH.STRATEGY_POOL, "history_processed.csv"), parse_dates=["date"])
+    tbond_df = pd.read_csv(
+        os.path.join(const.PATH.STRATEGY_POOL, "history_processed.csv"),
+        parse_dates=["date"],
+    )
     tbond_df = tbond_df[["date", "t_10y"]]
     etf_price = pd.merge(etf_price, tbond_df, on="date", how="left")
-    etf_price[f"y_fwd_{pred_days}"] = etf_price["t_10y"].shift(-pred_days) - etf_price["t_10y"]
+    etf_price[f"y_fwd_{pred_days}"] = (
+        etf_price["t_10y"].shift(-pred_days) - etf_price["t_10y"]
+    )
     etf_price[f"y_actual_{pred_days}"] = etf_price[f"y_fwd_{pred_days}"].apply(
         lambda x: 1 if x > 0 else 0
     )
@@ -345,8 +380,8 @@ def analyze_prediction(
 def main():
     start_date = datetime.datetime(2022, 1, 1)
     end_date = datetime.datetime(2024, 5, 30)
-    # run_backtest(start_date, end_date, num_traders=10, pred_days=10)
-    analyze_prediction(start_date, end_date, pred_days=10)
+    run_backtest(start_date, end_date, num_traders=10, pred_days=10)
+    # analyze_prediction(start_date, end_date, pred_days=10)
 
 
 if __name__ == "__main__":
