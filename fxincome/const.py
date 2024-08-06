@@ -308,12 +308,23 @@ class HistorySimilarity:
         # "avg_chg_20"
     ]
 
-    # yield_chg_fwd_n = t_10y(t+n) - t_10y(t)
-    LABELS = {
+    # Yield change between 2 dates. yield_chg_fwd_n = t_10y(t+n) - t_10y(t)
+    LABELS_YIELD_CHG = {
         5: "yield_chg_fwd_5",
         10: "yield_chg_fwd_10",
         20: "yield_chg_fwd_20",
         30: "yield_chg_fwd_30",
+    }
+
+    # Yield change through a window of n days. 3 classes(1, 0 , -1) are assigned according to yield change path.
+    # 1: Yield change has been > a HIGH_THRESHOLD for at least one day in the window.
+    # 0: Yield change has been between a HIGH_THRESHOLD and a LOW_THRESHOLD for the whole window.
+    # -1: Yield change has been < a LOW_THRESHOLD for at least one day in the window.
+    LABELS_MULTI_CLASS = {
+        5: "multi_class_5",
+        10: "multi_class_10",
+        20: "multi_class_20",
+        30: "multi_class_30",
     }
 
     PARAMS = {
@@ -324,6 +335,8 @@ class HistorySimilarity:
         "STOCK_RETURN_WINDOW": 10,
         "STOCK_RETURN_PCTL_WINDOW": 5 * 250,
         "HS300_PCTL_WINDOW": 5 * 250,
+        "HIGH_THRESHOLD": 0.020,  # For multi classification. Unit is %
+        "LOW_THRESHOLD": -0.005,  # For multi classification. Unit is %
     }
 
     SRC_NAME: str = "history_similarity.csv"

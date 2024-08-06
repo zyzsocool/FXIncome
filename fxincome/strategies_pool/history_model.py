@@ -33,7 +33,7 @@ def print_prediction_stats(train_df, test_df, distance_min, distance_max, smooth
     )
 
     # Print prediction stats
-    for day in const.HistorySimilarity.LABELS.keys():
+    for day in const.HistorySimilarity.LABELS_YIELD_CHG.keys():
         logger.info(f"###### Predicions of {day} days in the future ######")
         # Keep only rows where predictions are not NaN.
         # Nan predictions mean no similar dates are found in the history.
@@ -162,7 +162,7 @@ def predictions_test(
     # similarity_df now includes:
     # column 'date'(m rows), column ['2010-1-27', '2011-12-1'...](also m columns)
     # plus n columns 'yield_chg_fwd_n'(depends on const.HistorySimilarity.LABELS).
-    sample_df = sample_df[["date"] + list(const.HistorySimilarity.LABELS.values())]
+    sample_df = sample_df[["date"] + list(const.HistorySimilarity.LABELS_YIELD_CHG.values())]
     train_df, test_df = train_test_split(sample_df, train_ratio=train_ratio, gap=gap)
     similarity_df = pd.merge(sample_df, similarity_df, left_on="date", right_on="date")
 
@@ -170,7 +170,7 @@ def predictions_test(
     # Rows on test_df["date"] should NOT be included, since they are not in history.
     similarity_df = similarity_df[~similarity_df["date"].isin(test_df["date"])]
 
-    for day, name in const.HistorySimilarity.LABELS.items():
+    for day, name in const.HistorySimilarity.LABELS_YIELD_CHG.items():
         test_df[f"pred_weight_{day}"] = test_df.apply(
             lambda row: (
                 avg_yield_chg(
@@ -231,7 +231,7 @@ def predict_yield_chg(
         similar_dates(dict): DataFrames containing the predictions. One dataframe for each given date.
     """
 
-    sample_df = sample_df[["date"] + list(const.HistorySimilarity.LABELS.values())]
+    sample_df = sample_df[["date"] + list(const.HistorySimilarity.LABELS_YIELD_CHG.values())]
     combined_df = pd.merge(sample_df, similarity_df, left_on="date", right_on="date")
 
     # Predict only on given dates.
@@ -242,7 +242,7 @@ def predict_yield_chg(
     for index, row in result_df.iterrows():
         # To record distances and labels for similar dates with the same date (row["date"])
         similar_dates_with_one_date = pd.DataFrame()
-        for day, label_name in const.HistorySimilarity.LABELS.items():
+        for day, label_name in const.HistorySimilarity.LABELS_YIELD_CHG.items():
             # Use only past dates to predict the future
             history_df = combined_df[combined_df["date"] < row["date"]]
 
@@ -282,33 +282,33 @@ def main():
             "euclidean"
         )
     )
-    # predictions_test(
-    #     similarity_df=distance_df,
-    #     sample_df=all_samples,
-    #     distance_min=0.00,
-    #     distance_max=0.25,
-    #     smooth_c=5,
-    #     train_ratio=0.90,
-    #     gap=30,
-    # )
-
-    start_date = datetime.date(2022, 1, 1)
-    end_date = datetime.date(2024, 6, 1)
-    dates_to_predict = [
-        start_date + datetime.timedelta(days=x)
-        for x in range((end_date - start_date).days + 1)
-    ]
-    predictions, similar_dates_dict = predict_yield_chg(
-        dates_to_pred=dates_to_predict,
+    predictions_test(
         similarity_df=distance_df,
         sample_df=all_samples,
         distance_min=0.00,
         distance_max=0.25,
         smooth_c=5,
+        train_ratio=0.90,
+        gap=30,
     )
-    for date, similar_dates_df in similar_dates_dict.items():
-        print(date)
-        print(similar_dates_df)
+
+    # start_date = datetime.date(2022, 1, 1)
+    # end_date = datetime.date(2024, 6, 1)
+    # dates_to_predict = [
+    #     start_date + datetime.timedelta(days=x)
+    #     for x in range((end_date - start_date).days + 1)
+    # ]
+    # predictions, similar_dates_dict = predict_yield_chg(
+    #     dates_to_pred=dates_to_predict,
+    #     similarity_df=distance_df,
+    #     sample_df=all_samples,
+    #     distance_min=0.00,
+    #     distance_max=0.25,
+    #     smooth_c=5,
+    # )
+    # for date, similar_dates_df in similar_dates_dict.items():
+    #     print(date)
+    #     print(similar_dates_df)
 
 
 if __name__ == "__main__":

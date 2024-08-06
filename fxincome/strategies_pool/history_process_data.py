@@ -99,7 +99,7 @@ def feature_engineering(
 
     # iterate const.HistorySimilarity.LABELS to generate label values.
     # yield_chg_fwd_n = t_10y(t+n) - t_10y(t)
-    for day, name in const.HistorySimilarity.LABELS.items():
+    for day, name in const.HistorySimilarity.LABELS_YIELD_CHG.items():
         df[name] = df["t_10y"].shift(-day) - df["t_10y"]
     return df
 
@@ -179,27 +179,19 @@ def read_processed_data_from_csv(distance_type: str):
 
 
 def main():
-    YIELD_PCTL_WINDOW = 5 * 250
-    YIELD_CHG_PCTL_WINDOW = 5 * 250
-    YIELD_CHG_WINDOW_LONG = 20
-    YIELD_CHG_WINDOW_SHORT = 10
-    STOCK_RETURN_WINDOW = 10
-    STOCK_RETURN_PCTL_WINDOW = 5 * 250
-    HS300_PCTL_WINDOW = 5 * 250
-
     data = pd.read_csv(
         os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SRC_NAME),
         parse_dates=["date"],
     )
     data = feature_engineering(
         df=data,
-        yield_pctl_window=YIELD_PCTL_WINDOW,
-        yield_chg_pctl_window=YIELD_CHG_PCTL_WINDOW,
-        yield_chg_window_long=YIELD_CHG_WINDOW_LONG,
-        yield_chg_window_short=YIELD_CHG_WINDOW_SHORT,
-        stock_return_window=STOCK_RETURN_WINDOW,
-        stock_return_pctl_window=STOCK_RETURN_PCTL_WINDOW,
-        hs300_pctl_window=HS300_PCTL_WINDOW,
+        yield_pctl_window=const.HistorySimilarity.PARAMS["YIELD_PCTL_WINDOW"],
+        yield_chg_pctl_window=const.HistorySimilarity.PARAMS["YIELD_CHG_PCTL_WINDOW"],
+        yield_chg_window_long=const.HistorySimilarity.PARAMS["YIELD_CHG_WINDOW_LONG"],
+        yield_chg_window_short=const.HistorySimilarity.PARAMS["YIELD_CHG_WINDOW_SHORT"],
+        stock_return_window=const.HistorySimilarity.PARAMS["STOCK_RETURN_WINDOW"],
+        stock_return_pctl_window=const.HistorySimilarity.PARAMS["STOCK_RETURN_PCTL_WINDOW"],
+        hs300_pctl_window=const.HistorySimilarity.PARAMS["HS300_PCTL_WINDOW"],
     )
     data.to_csv(
         os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.FEATURE_FILE),
