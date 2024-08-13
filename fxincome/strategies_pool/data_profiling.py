@@ -42,7 +42,7 @@ def analyze_cosine():
 def analyze_features():
     src_name = "history_processed.csv"
     data = pd.read_csv(os.path.join(ROOT_PATH, src_name), parse_dates=["date"])
-    data = data[const.HistorySimilarity.FEATURES + ["yield_chg_fwd_10"]]
+    data = data[const.HistorySimilarity.FEATURES + ["yield_chg_fwd_5", "yield_chg_fwd_10", "yield_chg_fwd_20"]]
     data["t10_fwd_direction"] = data["yield_chg_fwd_10"].apply(
         lambda x: 1 if x > 0 else 0
     )

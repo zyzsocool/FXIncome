@@ -40,46 +40,64 @@ class Trader:
     bond_commission_rate: float
     repo_commission_rate: float
     position: int = 0
+    buy_all_confidence: float = -0.005  # unit %. -0.005 -> -0.005%. prediction weight < this confidence, buy all
+    sell_all_confidence: float = 0.005  # unit %. 0.005 -> 0.005%. prediction weight > this confidence, sell all
 
-    def buy(self, price: float, sizer: str) -> int:
+    def buy(self, price: float, sizer: str, pred_w: float) -> int:
         """
         Calculate the size to buy with all cash, accounting for commission, and update cash and position.
         Args:
             price(float): The price to buy
             sizer(str): "all" or "weighted". "all" means all in. "weighted" means buy based on prediction weights.
+            pred_w(float): The prediction weight.
         Returns:
             size(int): The size to buy, greater than or equal to 0
         """
+        max_size = int(self.cash / (price * (1 + self.bond_commission_rate)))
         if sizer == "all":
-            size = math.floor(self.cash / (price * (1 + self.bond_commission_rate)))
-            total_cost = size * price * (1 + self.bond_commission_rate)
-            self.cash = self.cash - total_cost
-            self.position = self.position + size
-            return size
+            size = max_size
         elif sizer == "weighted":
-            raise NotImplementedError("Not implemented yet")
+            if self.buy_all_confidence <= pred_w <= 0:
+                size = int(0.5 * max_size)
+            elif pred_w < self.buy_all_confidence:
+                size = max_size
+            else:
+                size = 0
         else:
             raise ValueError(f"Invalid sizer: {sizer}")
 
-    def sell(self, price: float, sizer: str) -> int:
+        total_cost = size * price * (1 + self.bond_commission_rate)
+        self.cash = self.cash - total_cost
+        self.position = self.position + size
+        return size
+
+    def sell(self, price: float, sizer: str, pred_w: float) -> int:
         """
         Calculate the cash received from selling all positions, accounting for commission, and update cash and position.
         Args:
             price(float): The price to sell
             sizer(str): "all" or "weighted". "all" means all out. "weighted" means sell based on prediction weights.
+            pred_w(float): The prediction weight.
         Returns:
             size(int): The size to sell, greater than or equal to 0
         """
+        max_size = self.position
         if sizer == "all":
-            cash_received = self.position * price * (1 - self.bond_commission_rate)
-            self.cash = self.cash + cash_received
-            size = self.position
-            self.position = 0
-            return size
+            size = max_size
         elif sizer == "weighted":
-            raise NotImplementedError("Not implemented yet")
+            if 0 < pred_w <= self.sell_all_confidence:
+                size = int(0.5 * max_size)
+            elif pred_w > self.sell_all_confidence:
+                size = max_size
+            else:
+                size = 0
         else:
             raise ValueError(f"Invalid sizer: {sizer}")
+
+        cash_received = size * price * (1 - self.bond_commission_rate)
+        self.cash = self.cash + cash_received
+        self.position = self.position - size
+        return size
 
     def reverse_repo(
         self, rate: float, start_date: datetime.date, end_date: datetime.date
@@ -91,7 +109,7 @@ class Trader:
             start_date(datetime.date): The start date of reverse repo
             end_date(datetime.date): The end date of reverse repo
         Returns:
-            interest(float): The interest received(after paying commision) from reverse repo.
+            interest(float): The interest received(after paying commission) from reverse repo.
         """
         days = (end_date - start_date).days
         interest = self.cash * rate * days / 365
@@ -103,12 +121,13 @@ class Trader:
 class NTraderStrategy(bt.Strategy):
     """
     Cash are divided into n parts, and each part is used to trade on a different day based on predictions.
-    num_traders <= pred_days.
+    Normally num_traders <= pred_days.
     Parmas can be accessed by self.p.xxx
         num_traders: Number of traders
         pred_days: YTM direction = ytm(t + pred_days) - ytm(t)
         sizer: "all" or "weighted".
                "all" means all in or all out. "weighted" means buy/sell based on prediction weights.
+        repo_commission: Commission rate for reverse repo. 0.01 for 1%.
         pred_df: DataFrame with columns ["date", "pred_5", "pred_10", ..., "pred_{n}"]. n = pred_days
     """
 
@@ -116,6 +135,7 @@ class NTraderStrategy(bt.Strategy):
         num_traders=1,
         pred_days=10,
         sizer="all",  # All in or all out
+        repo_commission=0.001 / 100,
         pred_df=None,
     )
 
@@ -131,6 +151,12 @@ class NTraderStrategy(bt.Strategy):
         position = sum([trader.position for trader in self.traders])
         return cash + position * self.etf_data.close[0]
 
+    def get_traders_cash(self):
+        return sum([trader.cash for trader in self.traders])
+
+    def get_traders_position(self):
+        return sum([trader.position for trader in self.traders])
+
     def __init__(self):
         self.etf_data = self.getdatabyname(self.etf_name)
 
@@ -139,16 +165,17 @@ class NTraderStrategy(bt.Strategy):
 
         total_days = self.etf_data.buflen() - 1
 
-        commission_rate = self.broker.getcommissioninfo(self.etf_data).p.commission
-
+        self.bond_commission_rate = self.broker.getcommissioninfo(
+            self.etf_data
+        ).p.commission
         self.traders = [
             Trader(
                 # The first n judgement days are the first n days of backtest data.
                 judgement_day=self.etf_data.datetime.date(-total_days + n),
                 cash=self.broker.get_cash() / self.p.num_traders,
                 position=0,
-                bond_commission_rate=commission_rate,
-                repo_commission_rate=0.001 / 100,
+                bond_commission_rate=self.bond_commission_rate,
+                repo_commission_rate=self.p.repo_commission,
             )
             for n in range(self.p.num_traders)
         ]
@@ -185,16 +212,17 @@ class NTraderStrategy(bt.Strategy):
 
     def next(self):
         today = self.etf_data.datetime.date(0)
+        # Do nothing on the final day.
+        if len(self.etf_data) == self.etf_data.buflen():
+            return
 
         for trader in self.traders:
-            # Do GC001 if today is not the last day of backtest data.
-            if len(self.etf_data) + 1 <= self.etf_data.buflen():
-                interest = trader.reverse_repo(
-                    rate=self.etf_data.gc001[0] / 100,
-                    start_date=today,
-                    end_date=self.etf_data.datetime.date(1),
-                )
-                self.broker.add_cash(interest)
+            interest = trader.reverse_repo(
+                rate=self.etf_data.gc001[0] / 100,
+                start_date=today,
+                end_date=self.etf_data.datetime.date(1),
+            )
+            self.broker.add_cash(interest)
             # Only on the judgement_day we decide whether to trade.
             if trader.judgement_day != today:
                 continue
@@ -211,10 +239,12 @@ class NTraderStrategy(bt.Strategy):
                 logger.info(f"No prediction")
                 continue
             else:
-                # prediction of ytm direction in next pred_days trade days.
-                pred_weight = preds[f"pred_{self.p.pred_days}"].iat[0]
+                # prediction of change of ytm after next pred_days trade days.
+                pred_weight = preds[f"pred_weight_{self.p.pred_days}"].iat[0]
             if pred_weight <= 0:  # ytm down, buy
-                buy_size = trader.buy(price=self.etf_data.open[1], sizer=self.p.sizer)
+                buy_size = trader.buy(
+                    price=self.etf_data.open[1], sizer=self.p.sizer, pred_w=pred_weight
+                )
                 self.order = self.buy(
                     data=self.etf_data,
                     size=buy_size,  # buy at t+1's open price
@@ -223,7 +253,9 @@ class NTraderStrategy(bt.Strategy):
                     valid=None,
                 )
             elif pred_weight > 0:  # ytm up, sell
-                sell_size = trader.sell(price=self.etf_data.open[1], sizer=self.p.sizer)
+                sell_size = trader.sell(
+                    price=self.etf_data.open[1], sizer=self.p.sizer, pred_w=pred_weight
+                )
                 self.order = self.sell(
                     data=self.etf_data,
                     size=sell_size,  # sell at t+1's open price
@@ -236,32 +268,182 @@ class NTraderStrategy(bt.Strategy):
                 continue
 
 
+class TradeEverydayStrategy(bt.Strategy):
+    """
+    Trade every day based on rule of taking profit(TP) and stopping loss(SL), and then based on the predictions.
+    If holding position, check position's pnl every day. Sell all if pnl(%)  > tp_pct or pnl(%) < sl_pct.
+    If condition above is not satisfied, check the prediction:
+        Buy all if predicted ytm is down. Sell all if predicted ytm is up.
+    Parmas can be accessed by self.p.xxx
+        pred_days: YTM direction = ytm(t + pred_days) - ytm(t)
+        tp_pct: Take profit percentage = (current price - position's average cost) / position's average cost
+        sl_pct: Stop loss percentage = (current price - position's average cost) / position's average cost
+        repo_commission: Commission rate for reverse repo. 0.01 for 1%.
+        pred_df: DataFrame with columns ["date", "pred_5", "pred_10", ..., "pred_{n}"]. n = pred_days
+    """
+
+    params = dict(
+        pred_days=10,
+        tp_pct=0.0015,  # ytm change of 1bp = value change of 8.8bp for a 10-year bond
+        sl_pct=-0.0008,  # ytm change of 1bp = value change of 8.8bp for a 10-year bond
+        repo_commission=0.001 / 100,  # Commission rate for reverse repo. 0.01 for 1%
+        pred_df=None,
+    )
+
+    etf_name = "511260.SH"  # 国泰上证10年期国债ETF
+
+    def log(self, txt, dt=None):
+        """Logging function for this strategy"""
+        dt = dt or self.etf_data.datetime.date(0)
+        print(f"{dt:%Y%m%d} - {txt}")
+
+    def __init__(self):
+        self.etf_data = self.getdatabyname(self.etf_name)
+
+        # None means no pending order
+        self.order = None
+
+        self.total_days = self.etf_data.buflen() - 1
+
+        self.bond_commission_rate = self.broker.getcommissioninfo(self.etf_data).p.commission
+
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+        # Check if an order has been completed
+        # Attention: broker could reject order if not enough cash
+        if order.status in [order.Completed]:
+            if order.isbuy():
+                self.log(
+                    f"Order {order.ref}, BUY, {order.executed.price:.2f}, {order.executed.size:.2f}, Cash after: {self.broker.get_cash():.2f}"
+                )
+            elif order.issell():
+                self.log(
+                    f"Order {order.ref}, SELL, {order.executed.price:.2f}, {order.executed.size:.2f}, Cash after: {self.broker.get_cash():.2f}"
+                )
+        elif order.status in [
+            order.Canceled,
+            order.Margin,
+            order.Rejected,
+            order.Expired,
+        ]:
+            self.log(
+                f"Order {order.ref} NOT COMPLETED: {OrderBase.Status[order.status]}. {'BUY' if order.isbuy() else 'SELL'}, Size: {order.size:.2f}"
+            )
+
+    def notify_trade(self, trade):
+        if trade.isclosed:
+            self.log(
+                f"Trade Profit, Gross:{trade.pnl:.4f}, Net:{trade.pnlcomm:.4f}, Commission:{trade.commission:.4f}"
+            )
+
+    def next(self):
+        today = self.etf_data.datetime.date(0)
+        # Do nothing on the final day.
+        if len(self.etf_data) == self.etf_data.buflen():
+            return
+
+        rate = self.etf_data.gc001[0] / 100
+        days = (self.etf_data.datetime.date(1) - today).days
+        cash = self.broker.get_cash()
+        interest = cash * rate * days / 365
+        commission = cash * self.p.repo_commission
+        self.broker.add_cash(interest - commission)
+
+        # Check position's pnl every day and decide wether to take profit or stop loss.
+        # Sell all if pnl(%)  > tp_pct or pnl(%) < sl_pct.
+        position = self.broker.getposition(self.etf_data)
+        if position.size > 0:
+            pnl_pct = (self.etf_data.close[0] - position.price) / position.price
+            if pnl_pct > self.p.tp_pct or pnl_pct < self.p.sl_pct:
+                self.order = self.sell(
+                    data=self.etf_data,
+                    size=position.size,
+                    price=None,  # sell at t+1's open price
+                    exectype=bt.Order.Market,  # sell at t+1's open price
+                    valid=None,
+                )
+                return
+        # Trade based on the predictions
+        preds = self.p.pred_df[self.p.pred_df["date"].dt.date == today]
+
+        if len(preds) == 0:  # Do nothing if no prediction
+            logger.info(f"No prediction")
+            return
+        else:
+            # prediction of change of ytm after next pred_days trade days.
+            pred_weight = preds[f"pred_weight_{self.p.pred_days}"].iat[0]
+        if pred_weight <= 0:  # ytm down, buy all
+            buy_size = int(
+                self.broker.get_cash()
+                / (self.etf_data.open[1] * (1 + self.bond_commission_rate))
+            )
+            self.order = self.buy(
+                data=self.etf_data,
+                size=buy_size,  # buy at t+1's open price
+                price=None,  # buy at t+1's open price
+                exectype=bt.Order.Market,  # buy at t+1's open price
+                valid=None,
+            )
+        elif pred_weight > 0:  # ytm up, sell all
+            sell_size = position.size
+            self.order = self.sell(
+                data=self.etf_data,
+                size=sell_size,  # sell at t+1's open price
+                price=None,  # sell at t+1's open price
+                exectype=bt.Order.Market,  # sell at t+1's open price
+                valid=None,
+            )
+        else:
+            logger.info(f"{today} - prediction weight is NOT a number")
+            return
+
+
 def run_backtest(
+    strat,  # NTraderStrategy or TradeEverydayStrategy
     start_date: datetime.datetime,
     end_date: datetime.datetime,
     num_traders: int,
     pred_days: int,
+    sizer: str = "all",
+    tp_pct: float = 0.0015,  # ytm change of 1bp = value change of 8.8bp for a 10-year bond
+    sl_pct: float = -0.0008,  # ytm change of 1bp = value change of 8.8bp for a 10-year bond
+    repo_commission: float = 0.001 / 100,  # Commission rate for reverse repo. 0.01 -> 1%
+    bond_commission: float = 0.0002,  # commission for bond trade. 0.0002 -> 0.02%
 ):
     bond_pred, etf_price = read_predictions_prices(start_date, end_date)
 
     # Create a cerebro entity
     cerebro = bt.Cerebro(tradehistory=True)
 
-    # Add Strategies
-    cerebro.addstrategy(
-        NTraderStrategy, num_traders=num_traders, pred_days=pred_days, pred_df=bond_pred, sizer="all"
-    )
-
     # Add data to Cerebro
     data1 = ETFData(dataname=etf_price, nocase=True)
     cerebro.adddata(data1, name=NTraderStrategy.etf_name)
 
     cerebro.broker.set_checksubmit(False)
-    cerebro.broker.set_fundmode(True, 1)
+    cerebro.broker.set_fundmode(False, 1)
     cerebro.broker.set_cash(10000)
-    cerebro.broker.setcommission(
-        commission=0.0002, name=NTraderStrategy.etf_name
-    )  # commission is 0.02%
+    cerebro.broker.setcommission(commission=bond_commission)
+
+    # Add Strategies
+    if strat is NTraderStrategy:
+        cerebro.addstrategy(
+            strategy=strat,
+            num_traders=num_traders,
+            pred_days=pred_days,
+            sizer=sizer,
+            repo_commission=repo_commission,
+            pred_df=bond_pred,
+        )
+    if strat is TradeEverydayStrategy:
+        cerebro.addstrategy(
+            strategy=TradeEverydayStrategy,
+            pred_days=pred_days,
+            tp_pct=tp_pct,
+            sl_pct=sl_pct,
+            repo_commission=repo_commission,
+            pred_df=bond_pred,
+        )
 
     #  Add analyzers
     cerebro.addanalyzer(bt.analyzers.TimeReturn, fund=True, _name="TimeReturn")
@@ -270,40 +452,41 @@ def run_backtest(
         bt.analyzers.SharpeRatio,
         timeframe=bt.TimeFrame.Weeks,
         riskfreerate=0.018,  # annual rate
-        fund=True,
+        fund=False,
+        annualize=True,
         _name="SharpRatio",
     )
     cerebro.addanalyzer(bt.analyzers.SQN, _name="SQN")
-    cerebro.addanalyzer(bt.analyzers.DrawDown, fund=True, _name="DrawDown")
+    cerebro.addanalyzer(bt.analyzers.DrawDown, _name="DrawDown")
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="TradeReport")
     #  Add observers
     cerebro.addobserver(bt.observers.FundValue)
     cerebro.addobserver(bt.observers.FundShares)
     # Run over everything
     strategies = cerebro.run()
-    strategy = strategies[0]
-    print_backtest_result(cerebro, data1, strategy)
-    # for strategy in strategies:
-    #     print_result(cerebro, data1, strategy)
+    print_backtest_result(cerebro, data1, strategies[0])
 
 
 def print_backtest_result(cerebro, data1, strategy):
     # Plot the result
     # cerebro.plot(style="bar")
     broker = cerebro.broker
-    print(data1._name)
-
-    traders_cash = sum([trader.cash for trader in strategy.traders])
-    traders_position = sum([trader.position for trader in strategy.traders])
-
-    print(f"Broker Cash: {broker.get_cash():.2f}")
-    print(f"Tradres Cash: {traders_cash:.2f}")
-    print(cerebro.broker.getposition(data1))
-    print(f"Traders Position: {traders_position:.2f}")
-    print(f"Strategy Total Value: {strategy.total_value():.2f}")
-    print(f"Broker Value: {broker.get_value():.2f}")
-    print(f"Broker Fund Value: {broker.get_fundvalue():.6f}")
-    print(f"Broker Fund Shares: {broker.get_fundshares():.2f}")
+    print(strategy)
+    if strategy is NTraderStrategy:
+        print(f"Broker Cash: {broker.get_cash():.2f}")
+        print(f"Tradres Cash: {strategy.get_traders_cash():.2f}")
+        print(cerebro.broker.getposition(data1))
+        print(f"Traders Position: {strategy.get_traders_position():.2f}")
+        print(f"Traders Total Value: {strategy.total_value():.2f}")
+        print(f"Broker Value: {broker.get_value():.2f}")
+        print(f"Broker Fund Value: {broker.get_fundvalue():.6f}")
+        print(f"Broker Fund Shares: {broker.get_fundshares():.2f}")
+    else:
+        print(f"Broker Cash: {broker.get_cash():.2f}")
+        print(cerebro.broker.getposition(data1))
+        print(f"Broker Value: {broker.get_value():.2f}")
+        print(f"Broker Fund Value: {broker.get_fundvalue():.6f}")
+        print(f"Broker Fund Shares: {broker.get_fundshares():.2f}")
 
     sharp_ratio = strategy.analyzers.SharpRatio
     sqn = strategy.analyzers.SQN
@@ -397,7 +580,18 @@ def analyze_prediction(
 def main():
     start_date = datetime.datetime(2022, 1, 1)
     end_date = datetime.datetime(2024, 5, 30)
-    run_backtest(start_date, end_date, num_traders=1, pred_days=10)
+    run_backtest(
+        strat=TradeEverydayStrategy,
+        start_date=start_date,
+        end_date=end_date,
+        num_traders=1,
+        pred_days=5,
+        sizer="weighted",
+        tp_pct=0.0015,
+        sl_pct=-0.0008,
+        repo_commission=0.001 / 100,
+        bond_commission=0.0002,
+    )
     # analyze_prediction(start_date, end_date, pred_days=10)
 
 
