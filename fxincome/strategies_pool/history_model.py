@@ -282,33 +282,33 @@ def main():
             "euclidean"
         )
     )
-    predictions_test(
-        similarity_df=distance_df,
-        sample_df=all_samples,
-        distance_min=0.00,
-        distance_max=0.25,
-        smooth_c=5,
-        train_ratio=0.90,
-        gap=30,
-    )
-
-    # start_date = datetime.date(2022, 1, 1)
-    # end_date = datetime.date(2024, 6, 1)
-    # dates_to_predict = [
-    #     start_date + datetime.timedelta(days=x)
-    #     for x in range((end_date - start_date).days + 1)
-    # ]
-    # predictions, similar_dates_dict = predict_yield_chg(
-    #     dates_to_pred=dates_to_predict,
+    # predictions_test(
     #     similarity_df=distance_df,
     #     sample_df=all_samples,
     #     distance_min=0.00,
     #     distance_max=0.25,
     #     smooth_c=5,
+    #     train_ratio=0.90,
+    #     gap=30,
     # )
-    # for date, similar_dates_df in similar_dates_dict.items():
-    #     print(date)
-    #     print(similar_dates_df)
+
+    start_date = datetime.date(2022, 1, 1)
+    end_date = datetime.date(2024, 5, 30)
+    dates_to_predict = [
+        start_date + datetime.timedelta(days=x)
+        for x in range((end_date - start_date).days + 1)
+    ]
+    predictions, similar_dates_dict = predict_yield_chg(
+        dates_to_pred=dates_to_predict,
+        similarity_df=distance_df,
+        sample_df=all_samples,
+        distance_min=0.00,
+        distance_max=0.25,
+        smooth_c=5,
+    )
+    for date, similar_dates_df in similar_dates_dict.items():
+        print(date)
+        print(similar_dates_df)
 
 
 if __name__ == "__main__":

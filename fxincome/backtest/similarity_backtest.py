@@ -451,7 +451,7 @@ def run_backtest(
     cerebro.addanalyzer(
         bt.analyzers.SharpeRatio,
         timeframe=bt.TimeFrame.Weeks,
-        riskfreerate=0.018,  # annual rate
+        riskfreerate=0.02,  # annual rate
         fund=False,
         annualize=True,
         _name="SharpRatio",
@@ -472,7 +472,7 @@ def print_backtest_result(cerebro, data1, strategy):
     # cerebro.plot(style="bar")
     broker = cerebro.broker
     print(strategy)
-    if strategy is NTraderStrategy:
+    if isinstance(strategy, NTraderStrategy):
         print(f"Broker Cash: {broker.get_cash():.2f}")
         print(f"Tradres Cash: {strategy.get_traders_cash():.2f}")
         print(cerebro.broker.getposition(data1))
@@ -501,17 +501,19 @@ def print_backtest_result(cerebro, data1, strategy):
 
 
 def read_predictions_prices(
-    start_date: datetime.datetime, end_date: datetime.datetime
+    start_date: datetime.date, end_date: datetime.date
 ) -> tuple:
     # predictions of Ytm direction
     bond_pred = pd.read_csv(
         os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.PREDICT_FILE),
         parse_dates=["date"],
     )
+    bond_pred["date"] = bond_pred["date"].dt.date
     etf_price = pd.read_csv(
         os.path.join(const.PATH.STRATEGY_POOL, "511260.sh.csv"),
         parse_dates=["date"],
     )
+    etf_price["date"] = etf_price["date"].dt.date
     # Filter prices between start_date and end_date
     etf_price = etf_price[
         (etf_price["date"] >= start_date) & (etf_price["date"] <= end_date)
@@ -524,7 +526,7 @@ def read_predictions_prices(
 
 
 def analyze_prediction(
-    start_date: datetime.datetime, end_date: datetime.datetime, pred_days: int
+    start_date: datetime.date, end_date: datetime.date, pred_days: int
 ):
     bond_pred, etf_price = read_predictions_prices(start_date, end_date)
 
@@ -533,6 +535,7 @@ def analyze_prediction(
         parse_dates=["date"],
     )
     tbond_df = tbond_df[["date", "t_10y"]]
+    tbond_df["date"] = tbond_df["date"].dt.date
     etf_price = pd.merge(etf_price, tbond_df, on="date", how="left")
     etf_price[f"y_fwd_{pred_days}"] = (
         etf_price["t_10y"].shift(-pred_days) - etf_price["t_10y"]
@@ -565,10 +568,10 @@ def analyze_prediction(
     bond_actual_etf_accuracy = accuracy_score(etf_actual_values, 1 - bond_actual_values)
     yield_actual_etf_accuracy = accuracy_score(etf_actual_values, 1 - y_actual_values)
 
-    logger.info(f"bond_pred_accuracy: {bond_pred_accuracy}")
-    logger.info(f"bond_pred_etf_accuracy: {bond_pred_etf_accuracy}")
-    logger.info(f"bond_actual_etf_accuracy: {bond_actual_etf_accuracy}")
-    logger.info(f"yield_actual_etf_accuracy: {yield_actual_etf_accuracy}")
+    logger.info(f"bond_pred_accuracy: {bond_pred_accuracy:.4f}")
+    logger.info(f"bond_pred_etf_accuracy: {bond_pred_etf_accuracy:.4f}")
+    logger.info(f"bond_actual_etf_accuracy: {bond_actual_etf_accuracy:.4f}")
+    logger.info(f"yield_actual_etf_accuracy: {yield_actual_etf_accuracy:.4f}")
     print(confusion_matrix(etf_actual_values, 1 - bond_actual_values))
     print(confusion_matrix(etf_actual_values, 1 - y_actual_values))
 
@@ -578,21 +581,21 @@ def analyze_prediction(
 
 
 def main():
-    start_date = datetime.datetime(2022, 1, 1)
-    end_date = datetime.datetime(2024, 5, 30)
-    run_backtest(
-        strat=TradeEverydayStrategy,
-        start_date=start_date,
-        end_date=end_date,
-        num_traders=1,
-        pred_days=5,
-        sizer="weighted",
-        tp_pct=0.0015,
-        sl_pct=-0.0008,
-        repo_commission=0.001 / 100,
-        bond_commission=0.0002,
-    )
-    # analyze_prediction(start_date, end_date, pred_days=10)
+    start_date = datetime.date(2022, 1, 1)
+    end_date = datetime.date(2024, 5, 30)
+    # run_backtest(
+    #     strat=TradeEverydayStrategy,
+    #     start_date=start_date,
+    #     end_date=end_date,
+    #     num_traders=1,
+    #     pred_days=5,
+    #     sizer="all",
+    #     tp_pct=0.0015,
+    #     sl_pct=-0.0008,
+    #     repo_commission=0.001 / 100,
+    #     bond_commission=0.0002,
+    # )
+    analyze_prediction(start_date, end_date, pred_days=5)
 
 
 if __name__ == "__main__":
