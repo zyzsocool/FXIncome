@@ -401,8 +401,8 @@ class TradeEverydayStrategy(bt.Strategy):
 
 def run_backtest(
     strat,  # NTraderStrategy or TradeEverydayStrategy
-    start_date: datetime.datetime,
-    end_date: datetime.datetime,
+    start_date: datetime.date,
+    end_date: datetime.date,
     num_traders: int,
     pred_days: int,
     sizer: str = "all",
@@ -522,6 +522,10 @@ def read_predictions_prices(
     for col in numeric_cols:
         etf_price[col] = pd.to_numeric(etf_price[col])
 
+    # Backtrader's datafeed requires datetime type
+    bond_pred["date"] = pd.to_datetime(bond_pred["date"])
+    etf_price["date"] = pd.to_datetime(etf_price["date"])
+
     return bond_pred, etf_price
 
 
@@ -583,19 +587,19 @@ def analyze_prediction(
 def main():
     start_date = datetime.date(2022, 1, 1)
     end_date = datetime.date(2024, 5, 30)
-    # run_backtest(
-    #     strat=TradeEverydayStrategy,
-    #     start_date=start_date,
-    #     end_date=end_date,
-    #     num_traders=1,
-    #     pred_days=5,
-    #     sizer="all",
-    #     tp_pct=0.0015,
-    #     sl_pct=-0.0008,
-    #     repo_commission=0.001 / 100,
-    #     bond_commission=0.0002,
-    # )
-    analyze_prediction(start_date, end_date, pred_days=5)
+    run_backtest(
+        strat=TradeEverydayStrategy,
+        start_date=start_date,
+        end_date=end_date,
+        num_traders=1,
+        pred_days=5,
+        sizer="all",
+        tp_pct=0.0015,
+        sl_pct=-0.0008,
+        repo_commission=0.001 / 100,
+        bond_commission=0.0002,
+    )
+    # analyze_prediction(start_date, end_date, pred_days=5)
 
 
 if __name__ == "__main__":
