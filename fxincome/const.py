@@ -5,12 +5,14 @@ class PATH:
     SPREAD_MODEL = MAIN + "model/spread/"
     STRATEGY_POOL = MAIN + "strategies_pool/"
 
-class MYSQL_CONFIG:
+class DATABASE_CONFIG:
     HOST = "localhost"
     PORT = 3306
     USER ='root'
     PASSWORD=''
     DATABASE='fxincome'
+    SQLITE_DB_CONN = f"{PATH.MAIN}fxincome.db"
+
 class COUPON_TYPE:
     REGULAR = "附息"
     ZERO = "贴现"  # 贴现债券剩余期限不能超过1年

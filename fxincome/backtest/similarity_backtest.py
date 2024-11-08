@@ -1,9 +1,9 @@
 # -*- coding: utf-8; py-indent-offset:4 -*-
 import os
-import math
 import datetime
 import backtrader as bt
 import pandas as pd
+import sqlite3
 from backtrader.order import OrderBase
 from analyzers.kelly import Kelly
 from sklearn.metrics import (
@@ -14,7 +14,6 @@ from sklearn.metrics import (
 )
 from dataclasses import dataclass
 from fxincome import logger, handler, const
-from sqlalchemy import create_engine
 
 
 class ETFData(bt.feeds.PandasData):
@@ -402,6 +401,7 @@ class TradeEverydayStrategy(bt.Strategy):
 
 def run_backtest(
     strat,  # NTraderStrategy or TradeEverydayStrategy
+    asset_code: str,  # 511260.SH
     start_date: datetime.date,
     end_date: datetime.date,
     num_traders: int,
@@ -412,7 +412,7 @@ def run_backtest(
     repo_commission: float = 0.001 / 100,  # Commission rate for reverse repo. 0.01 -> 1%
     bond_commission: float = 0.0002,  # commission for bond trade. 0.0002 -> 0.02%
 ):
-    bond_pred, etf_price = read_predictions_prices(start_date, end_date)
+    bond_pred, etf_price = read_predictions_prices(start_date, end_date, asset_code)
 
     # Create a cerebro entity
     cerebro = bt.Cerebro(tradehistory=True)
@@ -502,7 +502,7 @@ def print_backtest_result(cerebro, data1, strategy):
 
 
 def read_predictions_prices(
-    start_date: datetime.date, end_date: datetime.date
+    start_date: datetime.date, end_date: datetime.date, asset_code: str
 ) -> tuple:
     # predictions of Ytm direction
     bond_pred = pd.read_csv(
@@ -510,17 +510,11 @@ def read_predictions_prices(
         parse_dates=["date"],
     )
     bond_pred["date"] = bond_pred["date"].dt.date
-    # etf_price = pd.read_csv(
-    #     os.path.join(const.PATH.STRATEGY_POOL, "511260.sh.csv"),
-    #     parse_dates=["date"],
-    # )
-    connection_string = (f'mysql+mysqlconnector://{const.MYSQL_CONFIG.USER}:{const.MYSQL_CONFIG.PASSWORD}'
-                         f'@{const.MYSQL_CONFIG.HOST}/{const.MYSQL_CONFIG.DATABASE}')
-    engine=create_engine(connection_string)
-    etf_query = f"SELECT * FROM {const.PATH.STRATEGY_POOL.replace(const.PATH.MAIN, '').replace('/', '')}_511260sh"
-    etf_price = pd.read_sql(etf_query, engine)
-    engine.dispose()
 
+    conn = sqlite3.connect(const.DATABASE_CONFIG.SQLITE_DB_CONN)
+    db_query = f"SELECT * FROM strat_pool_hist_simi_backtest WHERE asset_code='{asset_code}'"
+    etf_price = pd.read_sql(db_query, conn, parse_dates=["date"])
+    conn.close()
 
     etf_price["date"] = etf_price["date"].dt.date
     # Filter prices between start_date and end_date
@@ -596,8 +590,10 @@ def analyze_prediction(
 def main():
     start_date = datetime.date(2024, 1, 1)
     end_date = datetime.date(2024, 10, 18)
+    asset_code = "511260.SH"
     run_backtest(
         strat=TradeEverydayStrategy,
+        asset_code=asset_code,
         start_date=start_date,
         end_date=end_date,
         num_traders=1,
