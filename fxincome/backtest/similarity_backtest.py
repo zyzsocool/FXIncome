@@ -5,7 +5,7 @@ import backtrader as bt
 import pandas as pd
 import sqlite3
 from backtrader.order import OrderBase
-from analyzers.kelly import Kelly
+from analyzers.ntrader import NTraderAnalyzer
 from sklearn.metrics import (
     confusion_matrix,
     accuracy_score,
@@ -39,9 +39,16 @@ class Trader:
     cash: float
     bond_commission_rate: float
     repo_commission_rate: float
+    repo_interest: float = 0.0  # Accumulated repo interest (after paying commission).
+    repo_commission: float = 0.0 # Accumulated repo commission. Always Positive.
+    bond_commission: float = 0.0 # Accumulated bond trade commission. Always Positive.
     position: int = 0
-    buy_all_confidence: float = -0.005  # unit %. -0.005 -> -0.005%. prediction weight < this confidence, buy all
-    sell_all_confidence: float = 0.005  # unit %. 0.005 -> 0.005%. prediction weight > this confidence, sell all
+    buy_all_confidence: float = (
+        -0.005
+    )  # unit %. -0.005 -> -0.005%. prediction weight < this confidence, buy all
+    sell_all_confidence: float = (
+        0.005  # unit %. 0.005 -> 0.005%. prediction weight > this confidence, sell all
+    )
 
     def buy(self, price: float, sizer: str, pred_w: float) -> int:
         """
@@ -66,9 +73,12 @@ class Trader:
         else:
             raise ValueError(f"Invalid sizer: {sizer}")
 
-        total_cost = size * price * (1 + self.bond_commission_rate)
-        self.cash = self.cash - total_cost
+        commission = size * price * self.bond_commission_rate
+        total_cost = size * price + commission
+        self.cash -= total_cost
         self.position = self.position + size
+        self.bond_commission += commission
+
         return size
 
     def sell(self, price: float, sizer: str, pred_w: float) -> int:
@@ -94,9 +104,12 @@ class Trader:
         else:
             raise ValueError(f"Invalid sizer: {sizer}")
 
-        cash_received = size * price * (1 - self.bond_commission_rate)
-        self.cash = self.cash + cash_received
+        commission = size * price * self.bond_commission_rate
+        cash_received = size * price - commission
+        self.cash += cash_received
         self.position = self.position - size
+        self.bond_commission += commission
+
         return size
 
     def reverse_repo(
@@ -114,8 +127,12 @@ class Trader:
         days = (end_date - start_date).days
         interest = self.cash * rate * days / 365
         commission = self.cash * self.repo_commission_rate
-        self.cash = self.cash + interest - commission
-        return interest - commission
+        interest = interest - commission
+        self.cash += interest
+        self.repo_interest += interest
+        self.repo_commission += commission
+
+        return interest
 
 
 class NTraderStrategy(bt.Strategy):
@@ -305,7 +322,9 @@ class TradeEverydayStrategy(bt.Strategy):
 
         self.total_days = self.etf_data.buflen() - 1
 
-        self.bond_commission_rate = self.broker.getcommissioninfo(self.etf_data).p.commission
+        self.bond_commission_rate = self.broker.getcommissioninfo(
+            self.etf_data
+        ).p.commission
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -409,7 +428,8 @@ def run_backtest(
     sizer: str = "all",
     tp_pct: float = 0.0015,  # ytm change of 1bp = value change of 8.8bp for a 10-year bond
     sl_pct: float = -0.0008,  # ytm change of 1bp = value change of 8.8bp for a 10-year bond
-    repo_commission: float = 0.001 / 100,  # Commission rate for reverse repo. 0.01 -> 1%
+    repo_commission: float = 0.001
+    / 100,  # Commission rate for reverse repo. 0.01 -> 1%
     bond_commission: float = 0.0002,  # commission for bond trade. 0.0002 -> 0.02%
 ):
     bond_pred, etf_price = read_predictions_prices(start_date, end_date, asset_code)
@@ -448,7 +468,7 @@ def run_backtest(
 
     #  Add analyzers
     cerebro.addanalyzer(bt.analyzers.TimeReturn, fund=True, _name="TimeReturn")
-    cerebro.addanalyzer(Kelly, _name="Kelly")
+    cerebro.addanalyzer(NTraderAnalyzer, _name="NTrader")
     cerebro.addanalyzer(
         bt.analyzers.SharpeRatio,
         timeframe=bt.TimeFrame.Weeks,
@@ -474,14 +494,8 @@ def print_backtest_result(cerebro, data1, strategy):
     broker = cerebro.broker
     print(strategy)
     if isinstance(strategy, NTraderStrategy):
-        print(f"Broker Cash: {broker.get_cash():.2f}")
-        print(f"Tradres Cash: {strategy.get_traders_cash():.2f}")
-        print(cerebro.broker.getposition(data1))
-        print(f"Traders Position: {strategy.get_traders_position():.2f}")
-        print(f"Traders Total Value: {strategy.total_value():.2f}")
-        print(f"Broker Value: {broker.get_value():.2f}")
-        print(f"Broker Fund Value: {broker.get_fundvalue():.6f}")
-        print(f"Broker Fund Shares: {broker.get_fundshares():.2f}")
+        ntrader = strategy.analyzers.NTrader
+        ntrader.print()
     else:
         print(f"Broker Cash: {broker.get_cash():.2f}")
         print(cerebro.broker.getposition(data1))
@@ -492,12 +506,10 @@ def print_backtest_result(cerebro, data1, strategy):
     sharp_ratio = strategy.analyzers.SharpRatio
     sqn = strategy.analyzers.SQN
     draw_down = strategy.analyzers.DrawDown
-    kelly = strategy.analyzers.Kelly
     trade_report = strategy.analyzers.TradeReport
     sharp_ratio.print()
     # sqn.print()
     # draw_down.print()
-    # kelly.print()
     # trade_report.print()
 
 
@@ -512,7 +524,9 @@ def read_predictions_prices(
     bond_pred["date"] = bond_pred["date"].dt.date
 
     conn = sqlite3.connect(const.DATABASE_CONFIG.SQLITE_DB_CONN)
-    db_query = f"SELECT * FROM strat_pool_hist_simi_backtest WHERE asset_code='{asset_code}'"
+    db_query = (
+        f"SELECT * FROM strat_pool_hist_simi_backtest WHERE asset_code='{asset_code}'"
+    )
     etf_price = pd.read_sql(db_query, conn, parse_dates=["date"])
     conn.close()
 
@@ -592,12 +606,12 @@ def main():
     end_date = datetime.date(2024, 10, 18)
     asset_code = "511260.SH"
     run_backtest(
-        strat=TradeEverydayStrategy,
+        strat=NTraderStrategy,
         asset_code=asset_code,
         start_date=start_date,
         end_date=end_date,
-        num_traders=1,
-        pred_days=5,
+        num_traders=10,
+        pred_days=10,
         sizer="all",
         tp_pct=0.0015,
         sl_pct=-0.0008,
