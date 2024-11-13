@@ -40,8 +40,8 @@ class Trader:
     bond_commission_rate: float
     repo_commission_rate: float
     repo_interest: float = 0.0  # Accumulated repo interest (after paying commission).
-    repo_commission: float = 0.0 # Accumulated repo commission. Always Positive.
-    bond_commission: float = 0.0 # Accumulated bond trade commission. Always Positive.
+    repo_commission: float = 0.0  # Accumulated repo commission. Always Positive.
+    bond_commission: float = 0.0  # Accumulated bond trade commission. Always Positive.
     position: int = 0
     buy_all_confidence: float = (
         -0.005
@@ -480,19 +480,28 @@ def run_backtest(
     cerebro.addanalyzer(bt.analyzers.SQN, _name="SQN")
     cerebro.addanalyzer(bt.analyzers.DrawDown, _name="DrawDown")
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="TradeReport")
+
     #  Add observers
     cerebro.addobserver(bt.observers.FundValue)
     cerebro.addobserver(bt.observers.FundShares)
-    # Run over everything
+
+    #  Add Writers
+    cerebro.addwriter(
+        bt.WriterFile,
+        csv=True,
+        out="./log/History_Similarity_Backtest_Result.csv",
+        rounding=2,
+    )
+
+    #  Run over everything
     strategies = cerebro.run()
-    print_backtest_result(cerebro, data1, strategies[0])
 
-
-def print_backtest_result(cerebro, data1, strategy):
+    #  Print out the result
+    strategy = strategies[0]
     # Plot the result
     # cerebro.plot(style="bar")
     broker = cerebro.broker
-    print(strategy)
+
     if isinstance(strategy, NTraderStrategy):
         ntrader = strategy.analyzers.NTrader
         ntrader.print()
@@ -547,20 +556,21 @@ def read_predictions_prices(
 
 
 def analyze_prediction(
-    start_date: datetime.date, end_date: datetime.date, pred_days: int
+    start_date: datetime.date, end_date: datetime.date, pred_days: int, asset_code:str
 ):
-    bond_pred, etf_price = read_predictions_prices(start_date, end_date)
+    bond_pred, etf_price = read_predictions_prices(start_date, end_date, asset_code)
 
     tbond_df = pd.read_csv(
         os.path.join(const.PATH.STRATEGY_POOL, "history_processed.csv"),
         parse_dates=["date"],
     )
     tbond_df = tbond_df[["date", "t_10y"]]
-    tbond_df["date"] = tbond_df["date"].dt.date
+
     etf_price = pd.merge(etf_price, tbond_df, on="date", how="left")
     etf_price[f"y_fwd_{pred_days}"] = (
         etf_price["t_10y"].shift(-pred_days) - etf_price["t_10y"]
     )
+
     etf_price[f"y_actual_{pred_days}"] = etf_price[f"y_fwd_{pred_days}"].apply(
         lambda x: 1 if x > 0 else 0
     )
@@ -579,6 +589,9 @@ def analyze_prediction(
     merged_df = pd.merge(etf_price, bond_pred, on="date", how="left")
     merged_df = merged_df.dropna()
 
+    #  bond_actual and y_actual are different.
+    #  bond_actual is based on bond trade days, while y_actual is based on ETF trade days.
+    #  For example, T is 2024-01-02, T+5 for bond_actual is 2024-01-09, while T+5 for y_actual may be 2024-01-10
     bond_pred_values = merged_df[f"pred_{pred_days}"]
     bond_actual_values = merged_df[f"actual_{pred_days}"]
     etf_actual_values = merged_df[f"actual_price_{pred_days}"]
@@ -618,7 +631,7 @@ def main():
         repo_commission=0.001 / 100,
         bond_commission=0.0002,
     )
-    # analyze_prediction(start_date, end_date, pred_days=5)
+    analyze_prediction(start_date, end_date, pred_days=10, asset_code=asset_code)
 
 
 if __name__ == "__main__":
