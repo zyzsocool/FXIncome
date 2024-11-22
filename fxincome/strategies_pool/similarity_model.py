@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 import logging
+import sqlite3
 from sklearn.metrics import (
     confusion_matrix,
     accuracy_score,
@@ -11,7 +12,7 @@ from sklearn.metrics import (
 import datetime
 from pandas import DataFrame
 
-import fxincome.strategies_pool.history_process_data
+import fxincome.strategies_pool.similarity_process_data
 from fxincome import logger, handler, const
 
 
@@ -84,7 +85,7 @@ def avg_yield_chg(
     distance_min: float,
     distance_max: float,
     smooth_c: float = 5.0,
-    yield_chg_fwd="yield_chg_fwd_10",
+    yield_chg_fwd:str ="yield_chg_fwd_10",
 ):
     """
     Calculate the weighted average yield change for a given date based on the similarity matrix.
@@ -119,6 +120,10 @@ def avg_yield_chg(
 
     if close_rows.empty:
         return np.nan, close_rows
+
+    # Drop dates wheen yield_chg_fwd is unavailable yet.
+    close_rows = close_rows.dropna(subset=[yield_chg_fwd])
+
     # Calculate weighted average of yield_chg_fwd, weighted by INVERSE of distance(smaller distance, higher weight)
     weights = 1 / (close_rows[given_date] + smooth_c)
     weights = weights / weights.sum()
@@ -269,16 +274,22 @@ def predict_yield_chg(
                     how="outer",
                 )
         similar_dates[row["date"]] = similar_dates_with_one_date
-    result_df.to_csv(
-        os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.PREDICT_FILE),
+
+    conn = sqlite3.connect(const.DB.SQLITE_CONN)
+    result_df.to_sql(
+        const.DB.HistorySimilarity_TABLES["PREDICTIONS"],
+        conn,
+        if_exists="replace",
         index=False,
     )
+    conn.close()
+
     return result_df, similar_dates
 
 
 def main():
     all_samples, distance_df = (
-        fxincome.strategies_pool.history_process_data.read_processed_data_from_csv(
+        fxincome.strategies_pool.similarity_process_data.read_processed_data(
             "euclidean"
         )
     )

@@ -141,9 +141,9 @@ def calculate_all_similarity(df, features: list, metric="euclidean"):
     return similarity_matrix
 
 
-def read_processed_data_from_csv(distance_type: str):
+def read_processed_data(distance_type: str):
     """
-    Read feature_label file and similarity matrix from csv files.
+    Read the feature_label table and similarity matrices from database and csv files.
     Convert objects of "date" column to dt.date type.
     Convert column names of dates in similarity matrix to dt.date type.
 
@@ -160,8 +160,12 @@ def read_processed_data_from_csv(distance_type: str):
     else:
         simi_file = const.HistorySimilarity.SIMI_COSINE
 
-    data_path = os.path.join(const.PATH.STRATEGY_POOL, "history_processed.csv")
-    feature_label_df = pd.read_csv(data_path, parse_dates=["date"])
+    conn = sqlite3.connect(const.DB.SQLITE_CONN)
+    feats_labels_table = const.DB.HistorySimilarity_TABLES["FEATS_LABELS"]
+    feature_label_df = pd.read_sql(
+        f"SELECT * FROM [{feats_labels_table}]", conn, parse_dates=["date"]
+    )
+
     feature_label_df["date"] = feature_label_df["date"].dt.date
 
     data_path = os.path.join(const.PATH.STRATEGY_POOL, simi_file)
@@ -178,15 +182,16 @@ def read_processed_data_from_csv(distance_type: str):
             continue
     similarity_matrix = similarity_matrix.rename(columns=rename_dict)
 
+    conn.close()
     return feature_label_df, similarity_matrix
 
 
 def main():
-    conn = sqlite3.connect(const.DATABASE_CONFIG.SQLITE_DB_CONN)
+    conn = sqlite3.connect(const.DB.SQLITE_CONN)
+    raw_feature_table = const.DB.HistorySimilarity_TABLES["RAW_FEATURES"]
     data = pd.read_sql(
-        "SELECT * FROM strat_pool_hist_simi_features", conn, parse_dates=["date"]
+        f"SELECT * FROM [{raw_feature_table}]", conn, parse_dates=["date"]
     )
-    conn.close()
 
     data = feature_engineering(
         df=data,
@@ -200,10 +205,11 @@ def main():
         ],
         hs300_pctl_window=const.HistorySimilarity.PARAMS["HS300_PCTL_WINDOW"],
     )
-    data.to_csv(
-        os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.FEATURE_FILE),
+    data.to_sql(
+        const.DB.HistorySimilarity_TABLES["FEATS_LABELS"],
+        conn,
+        if_exists="replace",
         index=False,
-        encoding="utf-8",
     )
 
     distance_df = calculate_all_similarity(
@@ -225,6 +231,7 @@ def main():
         encoding="utf-8",
         index=False,
     )
+    conn.close()
 
 
 if __name__ == "__main__":

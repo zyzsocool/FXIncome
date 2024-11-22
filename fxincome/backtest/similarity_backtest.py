@@ -525,21 +525,22 @@ def run_backtest(
 def read_predictions_prices(
     start_date: datetime.date, end_date: datetime.date, asset_code: str
 ) -> tuple:
+    conn = sqlite3.connect(const.DB.SQLITE_CONN)
     # predictions of Ytm direction
-    bond_pred = pd.read_csv(
-        os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.PREDICT_FILE),
-        parse_dates=["date"],
+    pred_table = const.DB.HistorySimilarity_TABLES["PREDICTIONS"]
+    bond_pred = pd.read_sql(
+        f"SELECT * FROM [{pred_table}]", conn, parse_dates=["date"]
     )
     bond_pred["date"] = bond_pred["date"].dt.date
 
-    conn = sqlite3.connect(const.DATABASE_CONFIG.SQLITE_DB_CONN)
+    etf_table = const.DB.HistorySimilarity_TABLES["RAW_BACKTEST"]
     db_query = (
-        f"SELECT * FROM strat_pool_hist_simi_backtest WHERE asset_code='{asset_code}'"
+        f"SELECT * FROM [{etf_table}] WHERE asset_code='{asset_code}'"
     )
     etf_price = pd.read_sql(db_query, conn, parse_dates=["date"])
+    etf_price["date"] = etf_price["date"].dt.date
     conn.close()
 
-    etf_price["date"] = etf_price["date"].dt.date
     # Filter prices between start_date and end_date
     etf_price = etf_price[
         (etf_price["date"] >= start_date) & (etf_price["date"] <= end_date)
@@ -560,10 +561,12 @@ def analyze_prediction(
 ):
     bond_pred, etf_price = read_predictions_prices(start_date, end_date, asset_code)
 
-    tbond_df = pd.read_csv(
-        os.path.join(const.PATH.STRATEGY_POOL, "history_processed.csv"),
-        parse_dates=["date"],
+    conn = sqlite3.connect(const.DB.SQLITE_CONN)
+    feats_labels_table = const.DB.HistorySimilarity_TABLES["FEATS_LABELS"]
+    tbond_df = pd.read_sql(
+        f"SELECT * FROM [{feats_labels_table}]", conn, parse_dates=["date"]
     )
+
     tbond_df = tbond_df[["date", "t_10y"]]
 
     etf_price = pd.merge(etf_price, tbond_df, on="date", how="left")
@@ -612,6 +615,7 @@ def analyze_prediction(
     merged_df.to_csv(
         os.path.join(const.PATH.STRATEGY_POOL, "bond_etf_predictions.csv"), index=False
     )
+    conn.close()
 
 
 def main():

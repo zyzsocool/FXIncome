@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import sqlite3
 import matplotlib.pyplot as plt
 from fxincome import const, logger
 from ydata_profiling import ProfileReport
@@ -40,8 +41,13 @@ def analyze_cosine():
 
 
 def analyze_features():
-    src_name = "history_processed.csv"
-    data = pd.read_csv(os.path.join(ROOT_PATH, src_name), parse_dates=["date"])
+    conn = sqlite3.connect(const.DB.SQLITE_CONN)
+    feats_labels_table = const.DB.HistorySimilarity_TABLES["FEATS_LABELS"]
+    data = pd.read_sql(
+        f"SELECT * FROM [{feats_labels_table}]", conn, parse_dates=["date"]
+    )
+    conn.close()
+
     data = data[const.HistorySimilarity.FEATURES + ["yield_chg_fwd_5", "yield_chg_fwd_10", "yield_chg_fwd_20"]]
     data["t10_fwd_direction"] = data["yield_chg_fwd_10"].apply(
         lambda x: 1 if x > 0 else 0
@@ -53,7 +59,7 @@ def analyze_features():
         # correlations=None,
         interactions=None,
     )
-    profile.to_file(f"d:/{src_name}.html")
+    profile.to_file(f"d:/{feats_labels_table}.html")
 
 
 def distance_histogram(distance_type: str):
@@ -135,9 +141,12 @@ def check_date(distance_type: str):
 
 
 def analyze_predictions():
-    src_name = "predictions.csv"
-    data = pd.read_csv(os.path.join(ROOT_PATH, src_name)).drop(columns=["date"])
-    data = data.dropna().reset_index(drop=True)
+    conn = sqlite3.connect(const.DB.SQLITE_CONN)
+    pred_table = const.DB.HistorySimilarity_TABLES["PREDICTIONS"]
+    data = pd.read_sql(f"SELECT * FROM [{pred_table}]", conn, parse_dates=["date"])
+    conn.close()
+
+    data = data.drop(columns=["date"]).dropna().reset_index(drop=True)
 
     profile = ProfileReport(
         data,
@@ -145,7 +154,7 @@ def analyze_predictions():
         correlations=None,
         interactions=None,
     )
-    profile.to_file(f"d:/{src_name}.html")
+    profile.to_file(f"d:/{pred_table}.html")
 
 
 # distance_histogram("euclidean")

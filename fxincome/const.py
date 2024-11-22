@@ -5,13 +5,17 @@ class PATH:
     SPREAD_MODEL = MAIN + "model/spread/"
     STRATEGY_POOL = MAIN + "strategies_pool/"
 
-class DATABASE_CONFIG:
-    HOST = "localhost"
-    PORT = 3306
-    USER ='root'
-    PASSWORD=''
-    DATABASE='fxincome'
-    SQLITE_DB_CONN = f"{PATH.MAIN}fxincome.db"
+
+class DB:
+    DATABASE = "fxincome"
+    SQLITE_CONN = f"{PATH.MAIN}fxincome.db"
+    HistorySimilarity_TABLES = {
+        "RAW_FEATURES": "strat.hist_simi.raw_features",
+        "RAW_BACKTEST": "strat.hist_simi.raw_backtest",
+        "FEATS_LABELS": "strat.hist_simi.feats_labels",
+        "PREDICTIONS": "strat.hist_simi.predictions",
+    }
+
 
 class COUPON_TYPE:
     REGULAR = "附息"
@@ -346,8 +350,5 @@ class HistorySimilarity:
         "LOW_THRESHOLD": -0.005,  # For multi classification. Unit is %
     }
 
-    SRC_NAME: str = "history_similarity.csv"
-    FEATURE_FILE: str = "history_processed.csv"
     SIMI_EUCLIDEAN: str = "similarity_matrix_euclidean.csv"
     SIMI_COSINE: str = "similarity_matrix_cosine.csv"
-    PREDICT_FILE: str = "predictions.csv"
