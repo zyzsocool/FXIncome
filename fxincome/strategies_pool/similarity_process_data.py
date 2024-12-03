@@ -6,6 +6,8 @@ import os
 import scipy
 import datetime
 from pandas import DataFrame
+from sklearn.metrics import euclidean_distances
+
 from fxincome import const, logger
 from ydata_profiling import ProfileReport
 
@@ -186,15 +188,24 @@ def read_processed_data(distance_type: str):
     return feature_label_df, similarity_matrix
 
 
-def main():
+def process_data():
+    """
+    Generate features, labels and similarity matrices.
+
+    Returns:
+        feats_labels(DataFrame): The feature_label DataFrame.
+        euclidean_distance_df(DataFrame): The Euclidean distance matrix DataFrame.
+        cosine_distance_df(DataFrame): The Cosine distance matrix DataFrame.
+    """
+
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
     raw_feature_table = const.DB.HistorySimilarity_TABLES["RAW_FEATURES"]
-    data = pd.read_sql(
+    feats_labels = pd.read_sql(
         f"SELECT * FROM [{raw_feature_table}]", conn, parse_dates=["date"]
     )
 
-    data = feature_engineering(
-        df=data,
+    feats_labels = feature_engineering(
+        df=feats_labels,
         yield_pctl_window=const.HistorySimilarity.PARAMS["YIELD_PCTL_WINDOW"],
         yield_chg_pctl_window=const.HistorySimilarity.PARAMS["YIELD_CHG_PCTL_WINDOW"],
         yield_chg_window_long=const.HistorySimilarity.PARAMS["YIELD_CHG_WINDOW_LONG"],
@@ -205,34 +216,35 @@ def main():
         ],
         hs300_pctl_window=const.HistorySimilarity.PARAMS["HS300_PCTL_WINDOW"],
     )
-    data.to_sql(
+    feats_labels.to_sql(
         const.DB.HistorySimilarity_TABLES["FEATS_LABELS"],
         conn,
         if_exists="replace",
         index=False,
     )
 
-    distance_df = calculate_all_similarity(
-        data, const.HistorySimilarity.FEATURES, metric="euclidean"
+    euclidean_distance_df = calculate_all_similarity(
+        feats_labels, const.HistorySimilarity.FEATURES, metric="euclidean"
     )
 
-    distance_df.to_csv(
+    euclidean_distance_df.to_csv(
         os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_EUCLIDEAN),
         encoding="utf-8",
         index=False,
     )
 
-    distance_df = calculate_all_similarity(
-        data, const.HistorySimilarity.FEATURES, metric="cosine"
+    cosine_distance_df = calculate_all_similarity(
+        feats_labels, const.HistorySimilarity.FEATURES, metric="cosine"
     )
 
-    distance_df.to_csv(
+    cosine_distance_df.to_csv(
         os.path.join(const.PATH.STRATEGY_POOL, const.HistorySimilarity.SIMI_COSINE),
         encoding="utf-8",
         index=False,
     )
     conn.close()
+    return feats_labels, euclidean_distance_df, cosine_distance_df
 
 
 if __name__ == "__main__":
-    main()
+    process_data()

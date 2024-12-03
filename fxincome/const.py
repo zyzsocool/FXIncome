@@ -14,6 +14,7 @@ class DB:
         "RAW_BACKTEST": "strat.hist_simi.raw_backtest",
         "FEATS_LABELS": "strat.hist_simi.temp.feats_labels",
         "PREDICTIONS": "strat.hist_simi.temp.predictions",
+        "REAL_BACKTEST": "strat.hist_simi.temp.real_backtest",
     }
 
 

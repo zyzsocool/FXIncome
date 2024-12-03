@@ -12,7 +12,7 @@ def update_strat_hist_simi_raw_featrues(conn):
     end = datetime.today() + timedelta(days=-1)
     wind_data = w.edb("S0059744,S0059749,G0000886,G0000891,000300.SH", begin, end)
     if wind_data.ErrorCode != 0:
-        logger.info(
+        logger.error(
             f"History Similarity RAW Features Wind API Error code: {wind_data.ErrorCode}"
         )
         return
@@ -26,12 +26,16 @@ def update_strat_hist_simi_raw_featrues(conn):
         index=["date", "t_1y", "t_10y", "t_us_1y", "t_us_10y", "hs300"],
     )
     df = df.T
-    df[df['date']>datetime.strptime(begin,'%Y-%m-%d').date()].to_sql(db_table, conn, if_exists="append", index=False)
+    df[df["date"] > datetime.strptime(begin, "%Y-%m-%d").date()].to_sql(
+        db_table, conn, if_exists="append", index=False
+    )
 
 
 def update_strat_hist_simi_raw_backtest(asset_code: str, conn):
     db_table = const.DB.HistorySimilarity_TABLES["RAW_BACKTEST"]
-    df = pd.read_sql(f"SELECT * FROM [{db_table}] WHERE asset_code='{asset_code}'", conn)
+    df = pd.read_sql(
+        f"SELECT * FROM [{db_table}] WHERE asset_code='{asset_code}'", conn
+    )
     df_of_code = df[df["asset_code"] == asset_code]
     latest_date = df_of_code["date"].max()
 
@@ -44,7 +48,7 @@ def update_strat_hist_simi_raw_backtest(asset_code: str, conn):
         endTime=end_date,
     )
     if wind_data1.ErrorCode != 0:
-        logger.info(f"{asset_code} Wind API Error code: {wind_data1.ErrorCode}")
+        logger.error(f"{asset_code} History Similarity RAW BACKTEST Wind API Error code: {wind_data1.ErrorCode}")
         return
     if len(wind_data1.Times) <= 1:
         logger.info("No new data to update for backtest.")
@@ -71,7 +75,7 @@ def update_strat_hist_simi_raw_backtest(asset_code: str, conn):
         codes="204001.SH", fields="vwap,close", beginTime=latest_date, endTime=end_date
     )
     if wind_data2.ErrorCode != 0:
-        logger.info(f"204001 Wind API Error code: {wind_data2.ErrorCode}")
+        logger.error(f"204001 Wind API Error code: {wind_data2.ErrorCode}")
         return
     if len(wind_data2.Times) <= 1:
         logger.info("No new data to update.")
@@ -84,7 +88,7 @@ def update_strat_hist_simi_raw_backtest(asset_code: str, conn):
     )
     df2 = df2.T
     df = pd.merge(df1, df2, on="date")
-    df[df['date']>datetime.strptime(latest_date,'%Y-%m-%d').date()].to_sql(
+    df[df["date"] > datetime.strptime(latest_date, "%Y-%m-%d").date()].to_sql(
         db_table, conn, if_exists="append", index=False
     )
 

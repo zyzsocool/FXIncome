@@ -260,13 +260,17 @@ class NTraderStrategy(bt.Strategy):
                 # prediction of change of ytm after next pred_days trade days.
                 pred_weight = preds[f"pred_weight_{self.p.pred_days}"].iat[0]
             if pred_weight <= 0:
-                if len(self.etf_data) == self.etf_data.buflen():# ytm down, buy
+                if len(self.etf_data) == self.etf_data.buflen():  # ytm down, buy
                     buy_size = trader.buy(
-                        price=self.etf_data.close[0], sizer=self.p.sizer, pred_w=pred_weight
+                        price=self.etf_data.close[0],
+                        sizer=self.p.sizer,
+                        pred_w=pred_weight,
                     )
                 else:
                     buy_size = trader.buy(
-                        price=self.etf_data.open[1], sizer=self.p.sizer, pred_w=pred_weight
+                        price=self.etf_data.open[1],
+                        sizer=self.p.sizer,
+                        pred_w=pred_weight,
                     )
                 self.order = self.buy(
                     data=self.etf_data,
@@ -276,13 +280,17 @@ class NTraderStrategy(bt.Strategy):
                     valid=None,
                 )
             elif pred_weight > 0:
-                if len(self.etf_data) == self.etf_data.buflen():## ytm up, sell
+                if len(self.etf_data) == self.etf_data.buflen():  ## ytm up, sell
                     sell_size = trader.sell(
-                        price=self.etf_data.close[0], sizer=self.p.sizer, pred_w=pred_weight
+                        price=self.etf_data.close[0],
+                        sizer=self.p.sizer,
+                        pred_w=pred_weight,
                     )
                 else:
                     sell_size = trader.sell(
-                        price=self.etf_data.open[1], sizer=self.p.sizer, pred_w=pred_weight
+                        price=self.etf_data.open[1],
+                        sizer=self.p.sizer,
+                        pred_w=pred_weight,
                     )
                 self.order = self.sell(
                     data=self.etf_data,
@@ -452,9 +460,9 @@ def run_backtest(
     / 100,  # Commission rate for reverse repo. 0.01 -> 1%
     bond_commission: float = 0.0002,  # commission for bond trade. 0.0002 -> 0.02%
 ):
-    bond_pred, etf_price = read_predictions_prices(start_date, end_date, asset_code,pred_table,etf_table)
-
-
+    bond_pred, etf_price = read_predictions_prices(
+        start_date, end_date, asset_code, pred_table, etf_table
+    )
 
     # Create a cerebro entity
     cerebro = bt.Cerebro(tradehistory=True)
@@ -545,22 +553,22 @@ def run_backtest(
 
 
 def read_predictions_prices(
-    start_date: datetime.date, end_date: datetime.date, asset_code: str,pred_table:str=None,etf_table:str=None
+    start_date: datetime.date,
+    end_date: datetime.date,
+    asset_code: str,
+    pred_table: str = None,
+    etf_table: str = None,
 ) -> tuple:
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
     # predictions of Ytm direction
     if pred_table is None:
         pred_table = const.DB.HistorySimilarity_TABLES["PREDICTIONS"]
-    bond_pred = pd.read_sql(
-        f"SELECT * FROM [{pred_table}]", conn, parse_dates=["date"]
-    )
+    bond_pred = pd.read_sql(f"SELECT * FROM [{pred_table}]", conn, parse_dates=["date"])
     bond_pred["date"] = bond_pred["date"].dt.date
 
     if etf_table is None:
         etf_table = const.DB.HistorySimilarity_TABLES["RAW_BACKTEST"]
-    db_query = (
-        f"SELECT * FROM [{etf_table}] WHERE asset_code='{asset_code}'"
-    )
+    db_query = f"SELECT * FROM [{etf_table}] WHERE asset_code='{asset_code}'"
     etf_price = pd.read_sql(db_query, conn, parse_dates=["date"])
     etf_price["date"] = etf_price["date"].dt.date
     conn.close()
@@ -581,9 +589,11 @@ def read_predictions_prices(
 
 
 def analyze_prediction(
-    start_date: datetime.date, end_date: datetime.date, pred_days: int, asset_code:str
+    start_date: datetime.date, end_date: datetime.date, pred_days: int, asset_code: str
 ):
-    bond_pred, etf_price = read_predictions_prices(start_date, end_date, asset_code,None,None)
+    bond_pred, etf_price = read_predictions_prices(
+        start_date, end_date, asset_code, None, None
+    )
 
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
     feats_labels_table = const.DB.HistorySimilarity_TABLES["FEATS_LABELS"]
