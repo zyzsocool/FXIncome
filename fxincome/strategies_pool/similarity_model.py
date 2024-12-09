@@ -110,7 +110,7 @@ def avg_yield_chg(
         close_rows(DataFrame): The rows in the similarity matrix that are within the specified distance range.
     """
 
-    # Find the column with the same date as the given date
+    # Find the column(distance) with the same date as the given date
     close_rows = simi_matrix_with_yield_chg[["date", given_date, yield_chg_fwd]]
     close_rows = close_rows[
         (close_rows[given_date] >= distance_min)
@@ -169,17 +169,16 @@ def predictions_test(
     sample_df = sample_df[["date"] + list(const.HistorySimilarity.LABELS_YIELD_CHG.values())]
     train_df, test_df = train_test_split(sample_df, train_ratio=train_ratio, gap=gap)
     similarity_df = pd.merge(sample_df, similarity_df, left_on="date", right_on="date")
+    similarity_df.sort_values(by='date',ascending=True)
 
-    # Dates in history are used to calculate weighted average yield change.
-    # Rows on test_df["date"] should NOT be included, since they are not in history.
-    similarity_df = similarity_df[~similarity_df["date"].isin(test_df["date"])]
-
-    for day, name in const.HistorySimilarity.LABELS_YIELD_CHG.items():
-        test_df[f"pred_weight_{day}"] = test_df.apply(
+    for n_day, name in const.HistorySimilarity.LABELS_YIELD_CHG.items():
+        test_df[f"pred_weight_{n_day}"] = test_df.apply(
             lambda row: (
                 avg_yield_chg(
                     row["date"],
-                    similarity_df,
+                    # Use only past dates to predict the future
+                    # The latest n days(T, T-1...T-n+1) don't know the yield_chg_n on T. They should be excluded.
+                    similarity_df[similarity_df['date']<=row['date']][:-n_day],
                     yield_chg_fwd=name,
                     distance_min=distance_min,
                     distance_max=distance_max,
@@ -191,14 +190,14 @@ def predictions_test(
         # If weighted change > 0, prediction = 1;
         # if weighted change <= 0, prediction = 0;
         # else it cannot find similar dates within distance scope, then prediction = nan;
-        test_df[f"pred_{day}"] = test_df[f"pred_weight_{day}"].apply(
+        test_df[f"pred_{n_day}"] = test_df[f"pred_weight_{n_day}"].apply(
             lambda x: 1 if x > 0 else 0 if x <= 0 else np.nan
         )
-        test_df[f"actual_{day}"] = test_df[name].apply(
+        test_df[f"actual_{n_day}"] = test_df[name].apply(
             lambda x: 1 if x > 0 else 0 if x <= 0 else np.nan
         )
 
-        test_df = test_df.dropna(subset=[f"actual_{day}"])
+        test_df = test_df.dropna(subset=[f"actual_{n_day}"])
 
     test_df.to_csv(
         os.path.join(const.PATH.STRATEGY_POOL, "test_predictions.csv"),
@@ -236,9 +235,8 @@ def predict_yield_chg(
     """
 
     sample_df = sample_df[["date"] + list(const.HistorySimilarity.LABELS_YIELD_CHG.values())]
-    sample_df=sample_df.sort_values(by="date",ascending=True)
     combined_df = pd.merge(sample_df, similarity_df, left_on="date", right_on="date")
-    combined_df=combined_df.sort_values(by='date',ascending=True)
+    combined_df = combined_df.sort_values(by='date',ascending=True)
 
     # Predict only on given dates.
     result_df = sample_df[sample_df["date"].isin(dates_to_pred)].copy()
@@ -248,9 +246,10 @@ def predict_yield_chg(
     for index, row in result_df.iterrows():
         # To record distances and labels for similar dates with the same date (row["date"])
         similar_dates_with_one_date = pd.DataFrame()
-        for day, label_name in const.HistorySimilarity.LABELS_YIELD_CHG.items():
+        for n_day, label_name in const.HistorySimilarity.LABELS_YIELD_CHG.items():
             # Use only past dates to predict the future
-            history_df = combined_df[combined_df["date"] < row["date"]][:-day+1]
+            # The latest n days(T, T-1...T-n+1) don't know the yield_chg_n on T. They should be excluded.
+            history_df = combined_df[combined_df["date"] <= row["date"]][:-n_day]
 
             yield_chg_avg, close_rows = avg_yield_chg(
                 row["date"],
@@ -260,8 +259,8 @@ def predict_yield_chg(
                 distance_max=distance_max,
                 smooth_c=smooth_c,
             )
-            result_df.at[index, f"pred_weight_{day}"] = yield_chg_avg
-            result_df.at[index, f"pred_{day}"] = (
+            result_df.at[index, f"pred_weight_{n_day}"] = yield_chg_avg
+            result_df.at[index, f"pred_{n_day}"] = (
                 1 if yield_chg_avg > 0 else 0 if yield_chg_avg <= 0 else np.nan
             )
             # Merge predictions of different LABELS for similar dates with the same date(row["date"])
@@ -300,12 +299,12 @@ def main():
     #     distance_min=0.00,
     #     distance_max=0.25,
     #     smooth_c=5,
-    #     train_ratio=0.90,
+    #     train_ratio=0.85,
     #     gap=30,
     # )
 
-    start_date = datetime.date(2024, 1, 1)
-    end_date = datetime.date(2024, 10, 18)
+    start_date = datetime.date(2020, 4, 29)
+    end_date = datetime.date(2021, 8, 2)
     dates_to_predict = [
         start_date + datetime.timedelta(days=x)
         for x in range((end_date - start_date).days + 1)

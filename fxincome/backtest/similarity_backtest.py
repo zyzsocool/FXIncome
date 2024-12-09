@@ -653,8 +653,8 @@ def analyze_prediction(
 
 
 def main():
-    start_date = datetime.date(2024, 1, 1)
-    end_date = datetime.date(2024, 10, 18)
+    start_date = datetime.date(2020, 4, 29)
+    end_date = datetime.date(2021, 8, 2)
     asset_code = "511260.SH"
     run_backtest(
         strat=NTraderStrategy,

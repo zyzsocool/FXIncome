@@ -2,7 +2,5 @@
 /tools/*.xlsx
 /examples/results/
 /fxincome/spread/myeasylog.log
-/.idea/*
-
-
+/.idea/
 /fxincome/backtest/log/
