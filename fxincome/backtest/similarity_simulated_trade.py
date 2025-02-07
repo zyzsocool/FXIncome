@@ -35,7 +35,7 @@ class Portfolio:
             f"Portfolio: {self.name}, Strategy: {self.strat.__name__}\n"
             f"Asset Code: {self.asset_code}, Distance Type: {self.distance_type}\n"
             f"Number of Traders: {self.num_traders}, Prediction Days Forwad: {self.pred_days}\n"
-            f"Distance Scope: [{self.distance_min}, {self.distance_min}], Smooth C: {self.smooth_c}\n"
+            f"Distance Scope: [{self.distance_min}, {self.distance_max}], Smooth C: {self.smooth_c}\n"
         )
 
 def update_data(asset_code_set: set, strat_date: datetime.date):

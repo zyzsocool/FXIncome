@@ -300,7 +300,7 @@ class NTraderStrategy(bt.Strategy):
                     valid=None,
                 )
             else:
-                logger.info(f"The prediction weight is NOT a number")
+                self.log(f"The prediction weight is NOT a number")
                 continue
             if len(self.etf_data) == self.etf_data.buflen():
                 if self.order is not None:
@@ -643,8 +643,10 @@ def analyze_prediction(
     logger.info(f"bond_pred_etf_accuracy: {bond_pred_etf_accuracy:.4f}")
     logger.info(f"bond_actual_etf_accuracy: {bond_actual_etf_accuracy:.4f}")
     logger.info(f"yield_actual_etf_accuracy: {yield_actual_etf_accuracy:.4f}")
-    print(confusion_matrix(etf_actual_values, 1 - bond_actual_values))
-    print(confusion_matrix(etf_actual_values, 1 - y_actual_values))
+    logger.info(f"bond_pred_etf precision: {precision_score(etf_actual_values, 1 - bond_pred_values):.4f}")
+    logger.info(f"bond_pred_etf recall: {recall_score(etf_actual_values, 1 - bond_pred_values):.4f}")
+    logger.info(f"bond_pred_etf Confusion Matrix: ")
+    print(confusion_matrix(etf_actual_values, 1 - bond_pred_values))
 
     merged_df.to_csv(
         os.path.join(const.PATH.STRATEGY_POOL, "bond_etf_predictions.csv"), index=False
@@ -653,8 +655,11 @@ def analyze_prediction(
 
 
 def main():
-    start_date = datetime.date(2020, 4, 29)
-    end_date = datetime.date(2021, 8, 2)
+    # start_date = datetime.date(2020, 4, 29)
+    # end_date = datetime.date(2021, 8, 2)
+    start_date = datetime.date(2022, 1, 1)
+    end_date = datetime.date(2024, 5, 30)
+
     asset_code = "511260.SH"
     run_backtest(
         strat=NTraderStrategy,
