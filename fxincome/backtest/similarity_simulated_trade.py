@@ -110,6 +110,7 @@ def predict_everyday(portfolio: Portfolio, feats_labels: DataFrame, distance_df:
     similar_dates_df = similar_dates_df[
         ["date", "distance", f"yield_chg_fwd_{portfolio.pred_days}"]
     ]
+    similar_dates_df = similar_dates_df.dropna(subset=[f"yield_chg_fwd_{portfolio.pred_days}"])
 
     if len(predictions) <= 1:
         logger.info(f"{portfolio.name}: No predictions to update.")
@@ -126,6 +127,7 @@ def predict_everyday(portfolio: Portfolio, feats_labels: DataFrame, distance_df:
 
 
 def plot_ytms(similar_dates_df, pred_days):
+
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
     ytm_df = pd.read_sql(
         f"SELECT date, t_10y FROM [{const.DB.HistorySimilarity_TABLES['RAW_FEATURES']}]",
@@ -137,15 +139,31 @@ def plot_ytms(similar_dates_df, pred_days):
     ytm_df["date"] = ytm_df["date"].dt.date
     ytm_df = ytm_df.sort_values(by="date").reset_index(drop=True)
 
+    #calculate the average change of 10y ytm
+    all_similar_dates = similar_dates_df["date"]
+    ytm_change_df_div = ytm_df.copy()
+    ytm_change_df_div['t_10y_shift'] = ytm_change_df_div['t_10y'].shift(-pred_days)
+    ytm_change_df_div = ytm_change_df_div[ytm_change_df_div['date'].isin(all_similar_dates)]
+    ytm_change_df_div['change'] = (ytm_change_df_div['t_10y_shift'] - ytm_change_df_div['t_10y']) * 100
+    average_change_all=ytm_change_df_div['change'].mean()
+
     # Select the 10 most similar dates based on the smallest distances
     most_similar_dates = similar_dates_df.sort_values(by="distance").head(10)["date"]
 
     # Extract ytms for each date in latest similar dates
     ytm_data = {}
+    change_bp=[]
     for date in most_similar_dates:
         start_idx = ytm_df[ytm_df["date"] == date].index[0]
         end_idx = start_idx + pred_days
-        ytm_data[date] = ytm_df.loc[start_idx:end_idx, "t_10y"].values
+        start_ytmx = ytm_df.at[start_idx, "t_10y"]
+        end_ytmx = ytm_df.at[end_idx, "t_10y"]
+        changex=(end_ytmx-start_ytmx)*100
+        change_bp.append(changex)
+        ytm_data[f"{date}({start_ytmx:.2f}%{changex:+.2f}bp)"] = (ytm_df.loc[start_idx:end_idx, "t_10y"].values-start_ytmx)*100
+
+    #calculate the average change of 10th most similar dates
+    average_change_10th = sum(change_bp) / len(change_bp)
 
     # Plot ytms for each date in latest similar dates
     plt.figure(figsize=(5, 10))
@@ -153,9 +171,11 @@ def plot_ytms(similar_dates_df, pred_days):
         plt.plot(range(pred_days + 1), ytms, label=f"Date: {date}")
 
     # Combine plots into a single diagram
-    plt.xlabel("Days")
-    plt.ylabel("10y YTM")
-    plt.title("10-Year YTM Over Time in Most Similar Dates")
+    plt.xlabel("Days\n"
+               f"average change of all similar dates : {average_change_all:+.2f}bp\n"
+               f"average change of 10th most similar dates : {average_change_10th:+.2f}bp")
+    plt.ylabel("10y YTM Change(bp)")
+    plt.title("10-Year YTM Change(bp) Over Time in Most Similar Dates")
     plt.legend()
     plt.tight_layout()
     plt.show()
