@@ -41,13 +41,13 @@ class IndexStrategy(bt.Strategy):
     INIT_CASH = 10e8  # Maximum cash for backtrader. Order will be rejected if cash is insufficient.
 
     params = (
-        ('year', None),
-        ('base_code', None),
-        ('code_list', None),
-        ('each_result_df', None),
-        ('min_percentile', 25),
-        ('max_percentile', 75),
-        ('min_volume', 1e9),
+        ("year", None),
+        ("base_code", None),
+        ("code_list", None),
+        ("each_result_df", None),
+        ("min_percentile", 25),
+        ("max_percentile", 75),
+        ("min_volume", 1e9),
     )
 
     def __init__(self):
@@ -57,25 +57,41 @@ class IndexStrategy(bt.Strategy):
         self.result["DATE"] = self.result["DATE"].apply(lambda x: x.date())
         self.result["Yield"] = 0.0
         self.result["BaseYield"] = 0.0
-        self.last_day = self.data.datetime.date(0)  # In init(), date(0) is the last day.
+        self.last_day = self.data.datetime.date(
+            0
+        )  # In init(), date(0) is the last day.
         self.current_size = [0, 0, 0]
         self.code_list_3 = []
         self.code_list_5 = []
         self.code_list_7 = []
         self.numbers_tradays = 0
-        self.row_data = pd.read_excel(const.INDEX_ENHANCEMENT.CDB_YC_PATH, parse_dates=["DATE"])
+        self.row_data = pd.read_excel(
+            const.INDEX_ENHANCEMENT.CDB_YC_PATH, parse_dates=["DATE"]
+        )
         # 只取前三年的数据
         self.row_data["DATE"] = self.row_data["DATE"].apply(lambda x: x.date())
         self.pass_data = self.row_data[
             (self.row_data["DATE"] >= datetime.date(self.p.year - 3, 1, 1))
             & (self.row_data["DATE"] <= datetime.date(self.p.year - 1, 12, 31))
         ]
-        self.spread5_3_min = np.percentile(self.pass_data["5年-3年国开/均值"], self.p.min_percentile)
-        self.spread7_5_min = np.percentile(self.pass_data["7年-5年国开/均值"], self.p.min_percentile)
-        self.spread7_3_min = np.percentile(self.pass_data["7年-3年国开/均值"], self.p.min_percentile)
-        self.spread5_3_max = np.percentile(self.pass_data["5年-3年国开/均值"], self.p.max_percentile)
-        self.spread7_5_max = np.percentile(self.pass_data["7年-5年国开/均值"], self.p.max_percentile)
-        self.spread7_3_max = np.percentile(self.pass_data["7年-3年国开/均值"], self.p.max_percentile)
+        self.spread5_3_min = np.percentile(
+            self.pass_data["5年-3年国开/均值"], self.p.min_percentile
+        )
+        self.spread7_5_min = np.percentile(
+            self.pass_data["7年-5年国开/均值"], self.p.min_percentile
+        )
+        self.spread7_3_min = np.percentile(
+            self.pass_data["7年-3年国开/均值"], self.p.min_percentile
+        )
+        self.spread5_3_max = np.percentile(
+            self.pass_data["5年-3年国开/均值"], self.p.max_percentile
+        )
+        self.spread7_5_max = np.percentile(
+            self.pass_data["7年-5年国开/均值"], self.p.max_percentile
+        )
+        self.spread7_3_max = np.percentile(
+            self.pass_data["7年-3年国开/均值"], self.p.max_percentile
+        )
         # 计算row_data中每天的"基准"的收益率,并将其存入self.result中
         self.now_data = self.row_data[
             (self.row_data["DATE"] >= datetime.date(self.p.year, 1, 1))
@@ -98,7 +114,9 @@ class IndexStrategy(bt.Strategy):
             ].values[0]
         ) / self.row_data.loc[
             self.row_data["DATE"] == self.data.datetime.date(1), "基准"
-        ].values[0]
+        ].values[
+            0
+        ]
 
     def log(self, txt, dt=None):
         """Logging function for this strategy"""
@@ -113,7 +131,8 @@ class IndexStrategy(bt.Strategy):
         (2)Coupon payment is based on T+1's actual coupon. Cash change at T+1.
         """
         cash_flow = pd.read_csv(
-            const.INDEX_ENHANCEMENT.CDB_PATH + f"cash_flow_{code}.csv", parse_dates=["DATE"]
+            const.INDEX_ENHANCEMENT.CDB_PATH + f"cash_flow_{code}.csv",
+            parse_dates=["DATE"],
         )
         cash_flow["DATE"] = cash_flow["DATE"].dt.date
         today_remaining_payment_times = len(
@@ -124,7 +143,7 @@ class IndexStrategy(bt.Strategy):
         )
         if tomorrow_remaining_payment_times < today_remaining_payment_times:
             coupon_row_num = len(cash_flow) - today_remaining_payment_times
-            # Leg1's holder will receive coupon payments at T+1.
+            # Bond holder will receive coupon payments at T+1.
             # Negative position means we short sell leg1, so we need to pay coupon to the lender.
             # Positive position means we hold leg1, so we receive coupon.
             coupon = (
@@ -147,24 +166,12 @@ class IndexStrategy(bt.Strategy):
                 self.log(
                     f"Order {order.ref}, BUY EXECUTED, {order.data._name},year,{self.getdatabyname(order.data._name).matu[0]:.2f},{order.executed.price:.2f}, {order.executed.size:.2f}"
                 )
-                # self.result.loc[
-                #     self.result["DATE"] == self.data.datetime.date(0), order.data._name
-                # ] = self.result.loc[
-                #     self.result["DATE"] == self.data.datetime.date(0), order.data._name
-                # ].apply(
-                #     lambda x: (order.executed.price, order.executed.size)
-                # )
+
             elif order.issell():
                 self.log(
                     f"Order {order.ref}, SELL EXECUTED, {order.data._name},year,{self.getdatabyname(order.data._name).matu[0]:.2f},{order.executed.price:.2f}, {order.executed.size:.2f}"
                 )
-                # self.result.loc[
-                #     self.result["DATE"] == self.data.datetime.date(0), order.data._name
-                # ] = self.result.loc[
-                #     self.result["DATE"] == self.data.datetime.date(0), order.data._name
-                # ].apply(
-                #     lambda x: (order.executed.price, order.executed.size)
-                # )
+
         elif order.status in [
             order.Canceled,
             order.Margin,
@@ -199,12 +206,6 @@ class IndexStrategy(bt.Strategy):
                 / 365
                 * (self.data.datetime.date(1) - self.data.datetime.date(0)).days
             )
-        # self.result.loc[
-        #     self.result["DATE"] == self.data.datetime.date(0), "cash_occured"
-        # ] = (
-        #     self.INIT_CASH
-        #     - self.broker.getcash()
-        # )
 
 
 class IndexEnhancedStrategy(IndexStrategy):
@@ -641,7 +642,9 @@ class IndexEnhancedStrategy(IndexStrategy):
             self.record()
             self.numbers_tradays -= 1
             return
-        self.strategy_max_yield(delta_size, each_size, sell_list, years_3_bond, years_5_bond, years_7_bond)
+        self.strategy_max_yield(
+            delta_size, each_size, sell_list, years_3_bond, years_5_bond, years_7_bond
+        )
         self.record()
 
 
@@ -720,13 +723,15 @@ if __name__ == "__main__":
             index=price_df["DATE"],
             columns=code_list,
         )
-        cerebro.addstrategy(IndexEnhancedStrategy,
-                           year=year,
-                           base_code=base_code,
-                           code_list=code_list,
-                           each_result_df=each_result_df,
-                           min_percentile=min_percentile,
-                           max_percentile=max_percentile)
+        cerebro.addstrategy(
+            IndexEnhancedStrategy,
+            year=year,
+            base_code=base_code,
+            code_list=code_list,
+            each_result_df=each_result_df,
+            min_percentile=min_percentile,
+            max_percentile=max_percentile,
+        )
         cerebro.broker.set_cash(IndexEnhancedStrategy.INIT_CASH)
         # cerebro.broker.set_slippage_perc(perc=0.0001)
         logger.info(year)
