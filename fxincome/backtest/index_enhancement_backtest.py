@@ -2,11 +2,10 @@ import backtrader as bt
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from fxincome import const
-from fxincome.utils import JsonModel
-from fxincome import logging, logger, f_logger
-from fxincome.spread.predict_spread import predict_pair_spread
 import datetime
+from fxincome import const
+from fxincome import logger
+from fxincome.backtest.index_extreme_bactest import IndexExtremeStrategy
 
 
 class BondData(bt.feeds.PandasData):
@@ -45,8 +44,8 @@ class IndexStrategy(bt.Strategy):
         ("base_code", None),
         ("code_list", None),
         ("each_result_df", None),
-        ("min_percentile", 25),
-        ("max_percentile", 75),
+        ("low_percentile", 25),
+        ("high_percentile", 75),
         ("min_volume", 1e9),
     )
 
@@ -75,22 +74,22 @@ class IndexStrategy(bt.Strategy):
             & (self.row_data["DATE"] <= datetime.date(self.p.year - 1, 12, 31))
         ]
         self.spread5_3_min = np.percentile(
-            self.pass_data["5年-3年国开/均值"], self.p.min_percentile
+            self.pass_data["5年-3年国开/均值"], self.p.low_percentile
         )
         self.spread7_5_min = np.percentile(
-            self.pass_data["7年-5年国开/均值"], self.p.min_percentile
+            self.pass_data["7年-5年国开/均值"], self.p.low_percentile
         )
         self.spread7_3_min = np.percentile(
-            self.pass_data["7年-3年国开/均值"], self.p.min_percentile
+            self.pass_data["7年-3年国开/均值"], self.p.low_percentile
         )
         self.spread5_3_max = np.percentile(
-            self.pass_data["5年-3年国开/均值"], self.p.max_percentile
+            self.pass_data["5年-3年国开/均值"], self.p.high_percentile
         )
         self.spread7_5_max = np.percentile(
-            self.pass_data["7年-5年国开/均值"], self.p.max_percentile
+            self.pass_data["7年-5年国开/均值"], self.p.high_percentile
         )
         self.spread7_3_max = np.percentile(
-            self.pass_data["7年-3年国开/均值"], self.p.max_percentile
+            self.pass_data["7年-3年国开/均值"], self.p.high_percentile
         )
         # 计算row_data中每天的"基准"的收益率,并将其存入self.result中
         self.now_data = self.row_data[
@@ -648,9 +647,17 @@ class IndexEnhancedStrategy(IndexStrategy):
         self.record()
 
 
-def plot_result(year):
+def plot_result(year, strategy_name="enhanced"):
+    """
+    Plot the result of a backtest for a specific year and strategy.
+
+    Args:
+        year (int): Year to plot
+        strategy_name (str): Strategy name ('enhanced' or 'two_steps')
+    """
     result = pd.read_csv(
-        const.INDEX_ENHANCEMENT.RESULT_PATH + f"{year}_result.csv", parse_dates=["DATE"]
+        const.INDEX_ENHANCEMENT.RESULT_PATH + f"{year}_{strategy_name}_result.csv",
+        parse_dates=["DATE"],
     )
     fig = plt.figure(num=1, figsize=(15, 5))
     ax = fig.add_subplot(111, label="1")
@@ -662,12 +669,19 @@ def plot_result(year):
     ax.set_ylabel("Yield")
     labs = [l.get_label() for l in lns]
     ax.legend(lns, labs, loc=0, fontsize=10)
-    plt.title(f"{year} Yield")
+    plt.title(f"{year} {strategy_name.replace('_', ' ').title()} Strategy Yield")
     plt.tight_layout()
-    plt.show()
+    plt.savefig(
+        const.INDEX_ENHANCEMENT.RESULT_PATH + f"{year}_{strategy_name}_yield_plot.png"
+    )
+    plt.close()
 
 
-if __name__ == "__main__":
+def main():
+    """
+    Main function to run the backtest for multiple years and strategies.
+    Configures parameters, runs backtests, records results, and generates visualizations.
+    """
     # use a dataframe to record the return of each year
     year_start = 2017
     year_end = 2023
@@ -682,8 +696,25 @@ if __name__ == "__main__":
             "Trade days",
         ],
     )
-    min_percentile = 25
-    max_percentile = 75
+    low_percentile = 25
+    high_percentile = 75
+    extreme_low_percentile = (
+        10  # Add extreme low percentile for IndexExtremeStrategy
+    )
+    extreme_high_percentile = (
+        90  # Add extreme high percentile for IndexExtremeStrategy
+    )
+
+    # Choose strategy: 'enhanced' or 'extreme'
+    strategy_name = "extreme"  # Change this to switch strategies
+
+    # Expert mode settings for IndexExtremeStrategy
+    expert_mode = True  # Set to True to use expert mode
+    expert_signal = 0  # 0 for rates down, 1 for rates up
+
+    # Visualization settings
+    plot_results = True  # Whether to generate plots for each year
+
     for year in range(year_start, year_end + 1):
         all_bond = pd.read_excel(
             const.INDEX_ENHANCEMENT.CDB_INFO_PATH,
@@ -723,30 +754,53 @@ if __name__ == "__main__":
             index=price_df["DATE"],
             columns=code_list,
         )
-        cerebro.addstrategy(
-            IndexEnhancedStrategy,
-            year=year,
-            base_code=base_code,
-            code_list=code_list,
-            each_result_df=each_result_df,
-            min_percentile=min_percentile,
-            max_percentile=max_percentile,
-        )
-        cerebro.broker.set_cash(IndexEnhancedStrategy.INIT_CASH)
+
+        # Set the selected strategy
+        if strategy_name == "enhanced":
+            # Use the original IndexEnhancedStrategy
+            cerebro.addstrategy(
+                IndexEnhancedStrategy,
+                year=year,
+                base_code=base_code,
+                code_list=code_list,
+                each_result_df=each_result_df,
+                low_percentile=low_percentile,
+                high_percentile=high_percentile,
+            )
+            strategy_class = IndexEnhancedStrategy
+        else:
+            # Use the new IndexExtremeStrategy
+            cerebro.addstrategy(
+                IndexExtremeStrategy,
+                year=year,
+                base_code=base_code,
+                code_list=code_list,
+                each_result_df=each_result_df,
+                low_percentile=low_percentile,
+                high_percentile=high_percentile,
+                extreme_low_percentile=extreme_low_percentile,
+                extreme_high_percentile=extreme_high_percentile,
+                expert_mode=expert_mode,
+                expert_signal=expert_signal,
+            )
+            strategy_class = IndexExtremeStrategy
+
+        cerebro.broker.set_cash(strategy_class.INIT_CASH)
         # cerebro.broker.set_slippage_perc(perc=0.0001)
-        logger.info(year)
+        logger.info(f"Running {year} with {strategy_name} strategy")
         strategies = cerebro.run()
         logger.info(
-            f"PROFIT: {(cerebro.broker.get_value() - IndexEnhancedStrategy.INIT_CASH) / 10000:.2f}"
+            f"PROFIT: {(cerebro.broker.get_value() - strategy_class.INIT_CASH) / 10000:.2f}"
         )
         result_df.loc[year, "Yield"] = (
-            (cerebro.broker.get_value() - IndexEnhancedStrategy.INIT_CASH)
+            (cerebro.broker.get_value() - strategy_class.INIT_CASH)
             / strategies[0].CASH_AVAILABLE
             * 100
         )
         # 删除求和后为0的列
         strategies[0].result.to_csv(
-            const.INDEX_ENHANCEMENT.RESULT_PATH + f"{year}_result.csv", index=False
+            const.INDEX_ENHANCEMENT.RESULT_PATH + f"{year}_{strategy_name}_result.csv",
+            index=False,
         )
         result_df.loc[year, "Base Yield"] = strategies[0].last_yield_base * 100
         result_df.loc[year, "Excess Return"] = (
@@ -755,7 +809,32 @@ if __name__ == "__main__":
         result_df.loc[year, "Max Loss"] = strategies[0].result["Yield"].min()
         result_df.loc[year, "Base Max Loss"] = strategies[0].result["BaseYield"].min()
         result_df.loc[year, "Trade days"] = strategies[0].numbers_tradays
-        # plot_result(year)
-    # calulate the average return of all years
+
+        # Plot results if enabled
+        if plot_results:
+            plot_result(year, strategy_name)
+
+    # Calculate the average return of all years
     result_df.loc["Average"] = result_df.mean()
-    result_df.to_csv(const.INDEX_ENHANCEMENT.RESULT_PATH + "all_result.csv", index=True)
+    result_df.to_csv(
+        const.INDEX_ENHANCEMENT.RESULT_PATH + f"{strategy_name}_all_result.csv",
+        index=True,
+    )
+
+    # Print summary of results
+    print("\nSummary of Results:")
+    print(f"Strategy: {strategy_name.replace('_', ' ').title()}")
+    if strategy_name == "extreme" and expert_mode:
+        print(f"Expert Mode: {'Rates Down' if expert_signal == 0 else 'Rates Up'}")
+    print("\nYearly Performance:")
+    for year in range(year_start, year_end + 1):
+        print(
+            f"{year}: Yield={result_df.loc[year, 'Yield']:.2f}%, Base={result_df.loc[year, 'Base Yield']:.2f}%, Excess={result_df.loc[year, 'Excess Return']:.2f}%"
+        )
+    print(
+        f"\nAverage: Yield={result_df.loc['Average', 'Yield']:.2f}%, Base={result_df.loc['Average', 'Base Yield']:.2f}%, Excess={result_df.loc['Average', 'Excess Return']:.2f}%"
+    )
+
+
+if __name__ == "__main__":
+    main()
