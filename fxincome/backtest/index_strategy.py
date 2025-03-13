@@ -50,8 +50,7 @@ class IndexStrategy(bt.Strategy):
     def __init__(self):
         self.data = self.getdatabyname(self.p.base_code)
         self.result = self.p.each_result_df
-        self.result["DATE"] = self.result.index
-        self.result["DATE"] = self.result["DATE"].apply(lambda x: x.date())
+        self.result["DATE"] = self.result.index.apply(lambda x: x.date())
         self.result["Yield"] = 0.0
         self.result["BaseYield"] = 0.0
         self.last_day = self.data.datetime.date(
@@ -62,14 +61,14 @@ class IndexStrategy(bt.Strategy):
         self.code_list_5 = []
         self.code_list_7 = []
         self.numbers_tradays = 0
-        self.row_data = pd.read_excel(
+        self.yield_curve_data = pd.read_excel(
             const.INDEX_ENHANCEMENT.CDB_YC_PATH, parse_dates=["DATE"]
         )
         # 只取前三年的数据
-        self.row_data["DATE"] = self.row_data["DATE"].apply(lambda x: x.date())
-        self.pass_data = self.row_data[
-            (self.row_data["DATE"] >= datetime.date(self.p.year - 3, 1, 1))
-            & (self.row_data["DATE"] <= datetime.date(self.p.year - 1, 12, 31))
+        self.yield_curve_data["DATE"] = self.yield_curve_data["DATE"].dt.date
+        self.pass_data = self.yield_curve_data[
+            (self.yield_curve_data["DATE"] >= datetime.date(self.p.year - 3, 1, 1))
+            & (self.yield_curve_data["DATE"] <= datetime.date(self.p.year - 1, 12, 31))
         ]
         self.spread5_3_min = np.percentile(
             self.pass_data["5年-3年国开/均值"], self.p.low_percentile
@@ -90,9 +89,9 @@ class IndexStrategy(bt.Strategy):
             self.pass_data["7年-3年国开/均值"], self.p.high_percentile
         )
         # 计算row_data中每天的"基准"的收益率,并将其存入self.result中
-        self.now_data = self.row_data[
-            (self.row_data["DATE"] >= datetime.date(self.p.year, 1, 1))
-            & (self.row_data["DATE"] <= datetime.date(self.p.year, 12, 31))
+        self.now_data = self.yield_curve_data[
+            (self.yield_curve_data["DATE"] >= datetime.date(self.p.year, 1, 1))
+            & (self.yield_curve_data["DATE"] <= datetime.date(self.p.year, 12, 31))
         ]
         self.yield_base = 0
         for i in range(1, len(self.now_data)):
@@ -105,12 +104,12 @@ class IndexStrategy(bt.Strategy):
             )
         # 计算最后一天的收益
         self.last_yield_base = (
-            self.row_data.loc[self.row_data["DATE"] == self.last_day, "基准"].values[0]
-            - self.row_data.loc[
-                self.row_data["DATE"] == self.data.datetime.date(1), "基准"
+            self.yield_curve_data.loc[self.yield_curve_data["DATE"] == self.last_day, "基准"].values[0]
+            - self.yield_curve_data.loc[
+                self.yield_curve_data["DATE"] == self.data.datetime.date(1), "基准"
             ].values[0]
-        ) / self.row_data.loc[
-            self.row_data["DATE"] == self.data.datetime.date(1), "基准"
+        ) / self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(1), "基准"
         ].values[
             0
         ]
@@ -120,18 +119,20 @@ class IndexStrategy(bt.Strategy):
         dt = dt or self.data.datetime.date(0)
         print(f"{dt:%Y%m%d} - {txt}")
 
-    def _process_coupon(self, code):
+    def add_coupon(self, code):
         """
         This method is supposed to be called in next().
-        It processes lending fee and coupon payment at the end of each day.
-        (1)Lending fee is based on today's position and rate. Cash change at T+1. Only fee for borrowing is considered.
-        (2)Coupon payment is based on T+1's actual coupon. Cash change at T+1.
+        At the end of each day, it adds coupon payment (if any) into broker at T+1.
+        Coupon payment is based on T+1's actual coupon. 
         """
         cash_flow = pd.read_csv(
             const.INDEX_ENHANCEMENT.CDB_PATH + f"cash_flow_{code}.csv",
             parse_dates=["DATE"],
         )
         cash_flow["DATE"] = cash_flow["DATE"].dt.date
+
+        # date(0) and date(1) are trade days which may not be consecutive and skip coupon 
+        # payments between them.
         today_remaining_payment_times = len(
             cash_flow[cash_flow["DATE"] > self.getdatabyname(code).datetime.date(0)]
         )
@@ -141,8 +142,6 @@ class IndexStrategy(bt.Strategy):
         if tomorrow_remaining_payment_times < today_remaining_payment_times:
             coupon_row_num = len(cash_flow) - today_remaining_payment_times
             # Bond holder will receive coupon payments at T+1.
-            # Negative position means we short sell leg1, so we need to pay coupon to the lender.
-            # Positive position means we hold leg1, so we receive coupon.
             coupon = (
                 cash_flow.iloc[coupon_row_num]["AMOUNT"]
                 * self.getposition(self.getdatabyname(code)).size
@@ -480,17 +479,17 @@ class IndexEnhancedStrategy(IndexStrategy):
             if self.getdatabyname(code).datetime.date(0) == self.last_day:
                 continue
             if self.getposition(self.getdatabyname(code)).size > 0:
-                self._process_coupon(code)
+                self.add_coupon(code)
         # 判断阈值
         each_size = [0, 0, 0]
-        spread7_5 = self.row_data.loc[
-            self.row_data["DATE"] == self.data.datetime.date(0), "7年-5年国开/均值"
+        spread7_5 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0), "7年-5年国开/均值"
         ].values[0]
-        spread7_3 = self.row_data.loc[
-            self.row_data["DATE"] == self.data.datetime.date(0), "7年-3年国开/均值"
+        spread7_3 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0), "7年-3年国开/均值"
         ].values[0]
-        spread5_3 = self.row_data.loc[
-            self.row_data["DATE"] == self.data.datetime.date(0), "5年-3年国开/均值"
+        spread5_3 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0), "5年-3年国开/均值"
         ].values[0]
         if spread7_5 < self.spread7_5_min:
             each_size[1] = each_size[1] + 2
@@ -527,14 +526,14 @@ class IndexEnhancedStrategy(IndexStrategy):
         else:
             self.numbers_tradays += 1
         # 从row_data中找到今日3年国开和5年国开的收益率
-        yield_3 = self.row_data.loc[
-            self.row_data["DATE"] == self.data.datetime.date(0), "3年国开"
+        yield_3 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0), "3年国开"
         ].values[0]
-        yield_5 = self.row_data.loc[
-            self.row_data["DATE"] == self.data.datetime.date(0), "5年国开"
+        yield_5 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0), "5年国开"
         ].values[0]
-        yield_7 = self.row_data.loc[
-            self.row_data["DATE"] == self.data.datetime.date(0), "7年国开"
+        yield_7 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0), "7年国开"
         ].values[0]
         # 筛选出所有收益率上下浮动在0.05以内的债券
         years_3_bond = [

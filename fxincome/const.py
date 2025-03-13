@@ -356,7 +356,7 @@ class HistorySimilarity:
 
 
 class INDEX_ENHANCEMENT:
-    CDB_YC_PATH = r"D:\ProjcetRicequant\fxincome\strategies_pool\index_enhancement\data\曲线估值\中债国开债收益率曲线.xlsx"
-    CDB_INFO_PATH = r"D:\ProjcetRicequant\fxincome\strategies_pool\index_enhancement\data\曲线估值\中债国开债基本要素.xlsx"
+    CDB_YC_PATH = r"D:\ProjcetRicequant\fxincome\strategies_pool\index_enhancement\曲线估值\中债国开债收益率曲线.xlsx"
+    CDB_INFO_PATH = r"D:\ProjcetRicequant\fxincome\strategies_pool\index_enhancement\曲线估值\中债国开债基本要素.xlsx"
     CDB_PATH = r"D:\ProjcetRicequant\fxincome\strategies_pool\index_enhancement\国开\\"
     RESULT_PATH = r"D:\ProjcetRicequant\fxincome\strategies_pool\index_enhancement\result\\"

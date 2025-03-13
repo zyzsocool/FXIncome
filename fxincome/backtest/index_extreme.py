@@ -115,19 +115,21 @@ class IndexExtremeStrategy(IndexStrategy):
                 max_idx = positions.index(max(positions))
                 positions[max_idx] = round(positions[max_idx] + diff, 1)  # diff is negative
                 
+        if sum(positions) != target_sum:
+            raise ValueError(f"Total position sum is not equal to target_sum: {sum(positions)} != {target_sum}")
         return positions
 
-    def get_final_positions(self, spread_53, spread_57, spread_73):
+    def get_final_positions(self, spread_53, spread_75, spread_73) -> list[float]:
         """
         Calculate the final positions based on all three spreads.
 
         Args:
             spread_53 (float): 5yr-3yr spread percentile
-            spread_57 (float): 7yr-5yr spread percentile
+            spread_75 (float): 7yr-5yr spread percentile
             spread_73 (float): 7yr-3yr spread percentile
 
         Returns:
-            list: Final positions [7yr, 5yr, 3yr]
+            list (float): Final positions [7yr, 5yr, 3yr]
         """
         # Initial positions: [7yr, 5yr, 3yr] 2 units each
         positions = [2, 2, 2]
@@ -135,17 +137,17 @@ class IndexExtremeStrategy(IndexStrategy):
         # Apply adjustments in sequence
         # For 5yr-3yr spread: x_idx=1 (5yr), y_idx=2 (3yr)
         positions = self.adjust_position(
-            spread_53, positions.copy(), 1, 2, self.p.expert_signal
+            spread_53, positions, 1, 2, self.p.expert_signal
         )
 
         # For 7yr-5yr spread: x_idx=0 (7yr), y_idx=1 (5yr)
         positions = self.adjust_position(
-            spread_57, positions.copy(), 0, 1, self.p.expert_signal
+            spread_75, positions, 0, 1, self.p.expert_signal
         )
 
         # For 7yr-3yr spread: x_idx=0 (7yr), y_idx=2 (3yr)
         positions = self.adjust_position(
-            spread_73, positions.copy(), 0, 2, self.p.expert_signal
+            spread_73, positions, 0, 2, self.p.expert_signal
         )
 
         return positions
@@ -174,26 +176,26 @@ class IndexExtremeStrategy(IndexStrategy):
             if self.getdatabyname(code).datetime.date(0) == self.last_day:
                 continue
             if self.getposition(self.getdatabyname(code)).size > 0:
-                self._process_coupon(code)
+                self.add_coupon(code)
 
         # Get current spread percentiles
         spread_57 = (
-            self.row_data.loc[
-                self.row_data["DATE"] == self.data.datetime.date(0), "7年-5年国开/均值"
+            self.yield_curve_data.loc[
+                self.yield_curve_data["DATE"] == self.data.datetime.date(0), "7年-5年国开/均值"
             ].values[0]
             / 100
         )  # Convert to decimal format (e.g., 0.25 instead of 25)
 
         spread_53 = (
-            self.row_data.loc[
-                self.row_data["DATE"] == self.data.datetime.date(0), "5年-3年国开/均值"
+            self.yield_curve_data.loc[
+                self.yield_curve_data["DATE"] == self.data.datetime.date(0), "5年-3年国开/均值"
             ].values[0]
             / 100
         )
 
         spread_73 = (
-            self.row_data.loc[
-                self.row_data["DATE"] == self.data.datetime.date(0), "7年-3年国开/均值"
+            self.yield_curve_data.loc[
+                self.yield_curve_data["DATE"] == self.data.datetime.date(0), "7年-3年国开/均值"
             ].values[0]
             / 100
         )
@@ -216,14 +218,14 @@ class IndexExtremeStrategy(IndexStrategy):
             self.numbers_tradays += 1
 
         # Get current yield data for bond selection
-        yield_3 = self.row_data.loc[
-            self.row_data["DATE"] == self.data.datetime.date(0), "3年国开"
+        yield_3 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0), "3年国开"
         ].values[0]
-        yield_5 = self.row_data.loc[
-            self.row_data["DATE"] == self.data.datetime.date(0), "5年国开"
+        yield_5 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0), "5年国开"
         ].values[0]
-        yield_7 = self.row_data.loc[
-            self.row_data["DATE"] == self.data.datetime.date(0), "7年国开"
+        yield_7 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0), "7年国开"
         ].values[0]
 
         # Select bonds by maturity and yield

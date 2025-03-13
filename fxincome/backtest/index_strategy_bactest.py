@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
 from fxincome import const, logger
-from fxincome.backtest.index_strategy import IndexEnhancedStrategy
+from fxincome.backtest.index_strategy import IndexEnhancedStrategy, BondData
 from fxincome.backtest.index_extreme import IndexExtremeStrategy
 
 
@@ -13,7 +13,7 @@ def plot_result(year, strategy_name="enhanced"):
 
     Args:
         year (int): Year to plot
-        strategy_name (str): Strategy name ('enhanced' or 'two_steps')
+        strategy_name (str): Strategy name ('enhanced' or 'extreme')
     """
     result = pd.read_csv(
         const.INDEX_ENHANCEMENT.RESULT_PATH + f"{year}_{strategy_name}_result.csv",
