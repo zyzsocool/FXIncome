@@ -1,4 +1,5 @@
-from fxincome.backtest.index_enhancement_backtest import IndexStrategy
+from fxincome.backtest.index_strategy import IndexStrategy
+
 
 class IndexExtremeStrategy(IndexStrategy):
     """
