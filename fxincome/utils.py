@@ -128,18 +128,3 @@ class JsonModel:
                 raise TypeError('Invalid serialization type.')
         return plain_dict
 
-    # @staticmethod
-    # def load_nn_models(names: list, json_path: str):
-    #     """
-    #     从本地读取某个模型的要素
-    #         Args:
-    #             names(list): a list of strs. 神经网络模型名字列表
-    #             json_path(str): Json文件的路径
-    #         Returns:
-    #             nn_dict(dict): key: ModelAttr, value: model
-    #     """
-    #     attrs = [JsonModel.load_attr(name) for name in names]
-    #     nn_dict = {}
-    #     for attr in attrs:
-    #         nn_dict[attr] = keras.models.load_model(json_path + attr.name)
-    #     return nn_dict

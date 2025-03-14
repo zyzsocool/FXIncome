@@ -27,14 +27,29 @@ class IndexExtremeStrategy(IndexStrategy):
         self.code_list_5 = []  # Tracks 5-year bonds currently held
         self.code_list_7 = []  # Tracks 7-year bonds currently held
 
-    def adjust_position(
+    def _calculate_spread_percentiles(
+        self, spread_53, spread_75, spread_73
+    ) -> tuple[float, float, float]:
+        """
+        Calculate the spread percentiles in 'lookback_years' for the given spreads.
+
+        Args:
+            spread_53 (float): 5yr-3yr spread
+            spread_75 (float): 7yr-5yr spread
+            spread_73 (float): 7yr-3yr spread
+
+        Returns:
+            tuple (float, float, float): Percentiles of the spreads
+        """
+
+    def _adjust_position(
         self, spread_pctl, positions, x_idx, y_idx, expert_signal=None
     ) -> list[float]:
         """
         Adjust positions based on spread percentile and optional expert signal.
 
         Args:
-            spread_pctl (float): Percentile of the spread. Spread = longer bond yield - shorter bond yield. 
+            spread_pctl (float): Percentile of the spread. Spread = longer bond yield - shorter bond yield.
                                 longer bond position is at x_idx, shorter bond position is at y_idx.
             positions (list): Current positions in [7yr, 5yr, 3yr]
             x_idx (int): Position index of longer-term bond
@@ -47,7 +62,9 @@ class IndexExtremeStrategy(IndexStrategy):
         # Check expert_signal is valid
         if self.p.expert_mode:
             if expert_signal is None:
-                raise ValueError("Expert signal is required when expert mode is enabled")
+                raise ValueError(
+                    "Expert signal is required when expert mode is enabled"
+                )
             elif expert_signal not in [0, 1]:
                 raise ValueError("Expert signal must be 0 or 1")
 
@@ -98,10 +115,10 @@ class IndexExtremeStrategy(IndexStrategy):
         total = sum(positions)
         if total > target_sum:
             positions = [p * target_sum / total for p in positions]
-            
+
         # Round positions to 1 decimal place
         positions = [round(p, 1) for p in positions]
-        
+
         # Ensure total equals exactly target_sum (6.0) with a single adjustment
         total = sum(positions)
         if total != target_sum:
@@ -113,13 +130,19 @@ class IndexExtremeStrategy(IndexStrategy):
             else:
                 # Find the largest position and subtract the excess
                 max_idx = positions.index(max(positions))
-                positions[max_idx] = round(positions[max_idx] + diff, 1)  # diff is negative
-                
+                positions[max_idx] = round(
+                    positions[max_idx] + diff, 1
+                )  # diff is negative
+
         if sum(positions) != target_sum:
-            raise ValueError(f"Total position sum is not equal to target_sum: {sum(positions)} != {target_sum}")
+            raise ValueError(
+                f"Total position sum is not equal to target_sum: {sum(positions)} != {target_sum}"
+            )
         return positions
 
-    def get_final_positions(self, spread_53, spread_75, spread_73) -> list[float]:
+    def _generate_target_positions(
+        self, spread_53, spread_75, spread_73
+    ) -> list[float]:
         """
         Calculate the final positions based on all three spreads.
 
@@ -136,17 +159,17 @@ class IndexExtremeStrategy(IndexStrategy):
 
         # Apply adjustments in sequence
         # For 5yr-3yr spread: x_idx=1 (5yr), y_idx=2 (3yr)
-        positions = self.adjust_position(
+        positions = self._adjust_position(
             spread_53, positions, 1, 2, self.p.expert_signal
         )
 
         # For 7yr-5yr spread: x_idx=0 (7yr), y_idx=1 (5yr)
-        positions = self.adjust_position(
+        positions = self._adjust_position(
             spread_75, positions, 0, 1, self.p.expert_signal
         )
 
         # For 7yr-3yr spread: x_idx=0 (7yr), y_idx=2 (3yr)
-        positions = self.adjust_position(
+        positions = self._adjust_position(
             spread_73, positions, 0, 2, self.p.expert_signal
         )
 
@@ -165,9 +188,9 @@ class IndexExtremeStrategy(IndexStrategy):
             self.result["DATE"] == self.data.datetime.date(0), "sum_position"
         ] = sum_position
 
-        # Handle last day processing
+        # Last day processing
         if self.data.datetime.date(0) == self.last_day:
-            return self.last_day_process()
+            self.last_day_process()
 
         # Process coupon payments
         for code in self.p.code_list:
@@ -176,32 +199,29 @@ class IndexExtremeStrategy(IndexStrategy):
             if self.getdatabyname(code).datetime.date(0) == self.last_day:
                 continue
             if self.getposition(self.getdatabyname(code)).size > 0:
+                # Add coupon payment (if any) to broker
                 self.add_coupon(code)
 
         # Get current spread percentiles
-        spread_57 = (
-            self.yield_curve_data.loc[
-                self.yield_curve_data["DATE"] == self.data.datetime.date(0), "7年-5年国开/均值"
-            ].values[0]
-            / 100
-        )  # Convert to decimal format (e.g., 0.25 instead of 25)
+        spread_57 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0),
+            "7年-5年国开/均值",
+        ].values[0]
 
-        spread_53 = (
-            self.yield_curve_data.loc[
-                self.yield_curve_data["DATE"] == self.data.datetime.date(0), "5年-3年国开/均值"
-            ].values[0]
-            / 100
-        )
+        spread_53 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0),
+            "5年-3年国开/均值",
+        ].values[0]
 
-        spread_73 = (
-            self.yield_curve_data.loc[
-                self.yield_curve_data["DATE"] == self.data.datetime.date(0), "7年-3年国开/均值"
-            ].values[0]
-            / 100
-        )
+        spread_73 = self.yield_curve_data.loc[
+            self.yield_curve_data["DATE"] == self.data.datetime.date(0),
+            "7年-3年国开/均值",
+        ].values[0]
 
         # Calculate target positions
-        target_positions = self.get_final_positions(spread_53, spread_57, spread_73)
+        target_positions = self._generate_target_positions(
+            spread_53, spread_57, spread_73
+        )
 
         # Scale positions to match SIZE
         target_positions = [pos * self.SIZE / 6 for pos in target_positions]
