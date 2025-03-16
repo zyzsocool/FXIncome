@@ -1,8 +1,10 @@
 import json, joblib
 import xgboost as xgb
-# import tensorflow.keras as keras
+import datetime
 from typing import Literal, Union
 from dataclasses import dataclass, field
+from financepy.products.bonds import Bond
+from financepy.utils import DayCountTypes, FrequencyTypes, Date
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,7 @@ class ModelAttr:
                          bonds: List[str]
                          }
     """
+
     name: str
     features: list = field(compare=False)
     labels: dict = field(compare=False)
@@ -41,7 +44,8 @@ class JsonModel:
     All the ModelAttrs are stored in a single Json file.
     The json file is located at json_path. The file name is model_attrs.json.
     """
-    JSON_NAME = 'model_attrs.json'
+
+    JSON_NAME = "model_attrs.json"
 
     @staticmethod
     def save_attr(model_attr: ModelAttr, json_file: str) -> None:
@@ -54,12 +58,12 @@ class JsonModel:
         name = model_attr.name
         #  Save model to json file. New model is added to the existing models.
         try:
-            with open(json_file, 'r') as f:
+            with open(json_file, "r") as f:
                 model_dict = json.load(f)
         except FileNotFoundError:
             model_dict = {}
         model_dict[name] = model_attr.__dict__
-        with open(json_file, 'w') as f:
+        with open(json_file, "w") as f:
             json.dump(model_dict, f)
 
     @staticmethod
@@ -73,14 +77,16 @@ class JsonModel:
                 model_attr(ModelAttr): 以ModelAttr形式返回Model的要素，如没有这个名字的模型，则返回None
         """
         try:
-            with open(json_file, 'r') as f:
+            with open(json_file, "r") as f:
                 model_dict = json.load(f)
-            model = ModelAttr(name,
-                              model_dict[name]['features'],
-                              model_dict[name]['labels'],
-                              model_dict[name]['scaled_feats'],
-                              model_dict[name]['stats'],
-                              model_dict[name]['other'])
+            model = ModelAttr(
+                name,
+                model_dict[name]["features"],
+                model_dict[name]["labels"],
+                model_dict[name]["scaled_feats"],
+                model_dict[name]["stats"],
+                model_dict[name]["other"],
+            )
         except (FileNotFoundError, KeyError):
             return None
         return model
@@ -94,16 +100,18 @@ class JsonModel:
                 json_file(str): Json全路径及文件名
         """
         try:
-            with open(json_file, 'r') as f:
+            with open(json_file, "r") as f:
                 model_dict = json.load(f)
         except FileNotFoundError:
             return None
         model_dict.pop(name)
-        with open(json_file, 'w') as f:
+        with open(json_file, "w") as f:
             json.dump(model_dict, f)
 
     @staticmethod
-    def load_plain_models(names: list, json_model_path: str, serialization_type: Literal['joblib', 'xgb']) -> dict:
+    def load_plain_models(
+        names: list, json_model_path: str, serialization_type: Literal["joblib", "xgb"]
+    ) -> dict:
         """
         从本地读取某个传统模型的要素和模型。返回的plain models都是符合sklearn接口的Classifier。
             Args:
@@ -113,18 +121,67 @@ class JsonModel:
             Returns:
                 plain_dict(dict): key: ModelAttr, value: model
         """
-        attrs = [JsonModel.load_attr(name, json_model_path + JsonModel.JSON_NAME) for name in names]
+        attrs = [
+            JsonModel.load_attr(name, json_model_path + JsonModel.JSON_NAME)
+            for name in names
+        ]
         plain_dict = {}
         for attr in attrs:
-            if serialization_type == 'joblib':
+            if serialization_type == "joblib":
                 plain_dict[attr] = joblib.load(json_model_path + attr.name)
-            elif serialization_type == 'xgb':
+            elif serialization_type == "xgb":
                 xgb_model = xgb.Booster()
                 xgb_model.load_model(json_model_path + attr.name)
                 clf = xgb.XGBClassifier()
                 clf._Booster = xgb_model
                 plain_dict[attr] = clf
             else:
-                raise TypeError('Invalid serialization type.')
+                raise TypeError("Invalid serialization type.")
         return plain_dict
+
+
+def cal_coupon(
+    chk_start: datetime.date,
+    chk_end: datetime.date,
+    issue_date: datetime.date,
+    maturity_date: datetime.date,
+    coupon: float,
+    coupon_freq: int,
+):
+    """
+    Calculate the coupon payment (if any) during a specified period for a bond. 
+    Start date and end date are trade days. Coupon payments may be between them.
+    Bond's tenor must be longer than 1 year.
+    
+    Args:
+        chk_start(datetime.date): The start date of checking period for coupon payment.
+        chk_end(datetime.date): The end date of checking period for coupon payment.
+        issue_date(datetime.date): The issue date of the bond.
+        maturity_date(datetime.date): The maturity date of the bond.
+        coupon(float): Coupon rate, 2.5 -> 2.5%
+        coupon_freq(int): The number of coupon payments per year. 1 for annual, 2 for semi-annual, 4 for quarterly.
+    Returns:
+        c(float): The coupon payment per 100 face value.
+    """
+    if coupon_freq == 1:
+        freq_type = FrequencyTypes.ANNUAL
+    elif coupon_freq == 2:
+        freq_type = FrequencyTypes.SEMI_ANNUAL
+    elif coupon_freq == 4:
+        freq_type = FrequencyTypes.QUARTERLY
+    else:
+        raise ValueError("Invalid coupon frequency.")
+
+    chk_start = Date(chk_start.year, chk_start.month, chk_start.day)
+    chk_end = Date(chk_end.year, chk_end.month, chk_end.day)
+    issue_date = Date(issue_date.year, issue_date.month, issue_date.day)
+    maturity_date = Date(maturity_date.year, maturity_date.month, maturity_date.day)
+    accrual_type = DayCountTypes.ACT_ACT_ICMA
+    bond = Bond(issue_date, maturity_date, coupon, freq_type, accrual_type)
+    c = 0
+    for dt, cf in zip(bond.cpn_dts, bond.flow_amounts):
+        if chk_start <= dt <= chk_end:
+            c += cf
+    return c
+
 
