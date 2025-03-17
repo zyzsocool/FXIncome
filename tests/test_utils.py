@@ -2,8 +2,9 @@ import pytest
 import joblib
 # import tensorflow.keras
 import xgboost as xgb
-from fxincome.utils import ModelAttr, JsonModel
+from fxincome.utils import ModelAttr, JsonModel, cal_coupon
 from fxincome.const import PATH
+import datetime
 
 
 class TestModel:
@@ -121,9 +122,45 @@ class TestModel:
         plain_model = plain_dict[global_data['lr_model']]
         assert plain_model.get_params()['logistic__C'] == lr_model.get_params()['logistic__C']
 
-    # def test_load_nn_models(self, global_data):
-    #     nn_names = [global_data['lstm_name']]
-    #     nn_dict = JsonModel.load_nn_models(nn_names)
-    #     lstm_model = tensorflow.keras.models.load_model(JsonModel.model_path + global_data['lstm_name'])
-    #     nn_model = nn_dict[global_data['lstm_model']]
-    #     assert nn_model.summary() == lstm_model.summary()
+
+def test_cal_coupon():
+    """Test coupon calculation for bond 240004.IB"""
+    # Bond parameters
+    issue_date = datetime.date(2024, 2, 25)
+    maturity_date = datetime.date(2034, 2, 25)
+    coupon = 0.0235
+    coupon_freq = 2
+    
+    # Check period
+    chk_start = datetime.date(2025, 2, 24)
+    chk_end = datetime.date(2025, 2, 26)
+    
+    expected_coupon = 0.01175
+    
+    actual_coupon = cal_coupon(
+        chk_start=chk_start,
+        chk_end=chk_end,
+        issue_date=issue_date,
+        maturity_date=maturity_date,
+        coupon=coupon,
+        coupon_freq=coupon_freq
+    )
+    
+    # Assert that calculated value matches expected value
+    assert pytest.approx(actual_coupon, abs=1e-6) == expected_coupon, f"Expected coupon {expected_coupon}, got {actual_coupon}"
+
+    # Check period
+    chk_start = datetime.date(2025, 2, 24)
+    chk_end = datetime.date(2025, 2, 25) # End date is not included.
+    
+    expected_coupon = 0  # End date is the payment date but not included in the checking period.
+
+    actual_coupon = cal_coupon(
+        chk_start=chk_start,
+        chk_end=chk_end,
+        issue_date=issue_date,
+        maturity_date=maturity_date,
+        coupon=coupon,
+        coupon_freq=coupon_freq
+    )
+    assert pytest.approx(actual_coupon, abs=1e-6) == expected_coupon, f"Expected coupon {expected_coupon}, got {actual_coupon}"

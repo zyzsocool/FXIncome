@@ -155,10 +155,10 @@ def cal_coupon(
     
     Args:
         chk_start(datetime.date): The start date of checking period for coupon payment.
-        chk_end(datetime.date): The end date of checking period for coupon payment.
+        chk_end(datetime.date): The end date(not included) of checking period for coupon payment.
         issue_date(datetime.date): The issue date of the bond.
         maturity_date(datetime.date): The maturity date of the bond.
-        coupon(float): Coupon rate, 2.5 -> 2.5%
+        coupon(float): Coupon rate, 0.025 -> 2.5%
         coupon_freq(int): The number of coupon payments per year. 1 for annual, 2 for semi-annual, 4 for quarterly.
     Returns:
         c(float): The coupon payment per 100 face value.
@@ -172,15 +172,17 @@ def cal_coupon(
     else:
         raise ValueError("Invalid coupon frequency.")
 
-    chk_start = Date(chk_start.year, chk_start.month, chk_start.day)
-    chk_end = Date(chk_end.year, chk_end.month, chk_end.day)
-    issue_date = Date(issue_date.year, issue_date.month, issue_date.day)
-    maturity_date = Date(maturity_date.year, maturity_date.month, maturity_date.day)
+    chk_start = Date(chk_start.day, chk_start.month, chk_start.year)
+    chk_end = Date(chk_end.day, chk_end.month, chk_end.year)
+    issue_date = Date(issue_date.day, issue_date.month, issue_date.year)
+    maturity_date = Date(maturity_date.day, maturity_date.month, maturity_date.year)
     accrual_type = DayCountTypes.ACT_ACT_ICMA
     bond = Bond(issue_date, maturity_date, coupon, freq_type, accrual_type)
+
     c = 0
+    # The first date is the issue date, which does not have coupon payment.
     for dt, cf in zip(bond.cpn_dts, bond.flow_amounts):
-        if chk_start <= dt <= chk_end:
+        if chk_start <= dt < chk_end:
             c += cf
     return c
 

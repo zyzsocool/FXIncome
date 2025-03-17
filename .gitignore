@@ -6,5 +6,7 @@
 /fxincome/.pytest_cache/
 /fxincome/__pycache__/
 /fxincome/backtest/__pycache__/
+/fxincome/spread/__pycache__/
 /tests/__pycache__/
+/__pycache__/
 
