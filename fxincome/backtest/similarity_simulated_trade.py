@@ -49,10 +49,10 @@ def update_data(asset_code_set: set, strat_date: datetime.date):
 
     # Update Real Trade Price
     for asset_code in asset_code_set:
-        raw_backtest_table = const.DB.HistorySimilarity_TABLES["RAW_BACKTEST"]
+        raw_backtest_table = const.DB.TABLES.HistorySimilarity.RAW_BACKTEST
         sql = f"SELECT * FROM [{raw_backtest_table}] where asset_code='{asset_code}' and date>='{strat_date}'"
         raw_df = pd.read_sql(sql, conn)
-        real_backtest_table = const.DB.HistorySimilarity_TABLES["REAL_BACKTEST"]
+        real_backtest_table = const.DB.TABLES.HistorySimilarity.REAL_BACKTEST
         sql = f"SELECT date FROM [{real_backtest_table}] where asset_code='{asset_code}' and date>='{strat_date}'"
         real_dates = pd.read_sql(sql, conn)["date"].tolist()
         append_data = []
@@ -72,7 +72,7 @@ def update_data(asset_code_set: set, strat_date: datetime.date):
         choice = input("是否确认添加数据？(y/n)")
         if choice == "y":
             append_df.to_sql(
-                const.DB.HistorySimilarity_TABLES["REAL_BACKTEST"],
+                const.DB.TABLES.HistorySimilarity.REAL_BACKTEST,
                 conn,
                 if_exists="append",
                 index=False,
@@ -130,7 +130,7 @@ def plot_ytms(similar_dates_df, pred_days):
 
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
     ytm_df = pd.read_sql(
-        f"SELECT date, t_10y FROM [{const.DB.HistorySimilarity_TABLES['RAW_FEATURES']}]",
+        f"SELECT date, t_10y FROM [{const.DB.TABLES.HistorySimilarity.RAW_FEATURES}]",
         conn,
         parse_dates=["date"],
     )
@@ -211,7 +211,7 @@ def main():
             num_traders=pf.num_traders,
             pred_days=pf.pred_days,
             pred_table=f"strat.hist_simi.temp.predictions_{pf.name}",
-            etf_table=const.DB.HistorySimilarity_TABLES["REAL_BACKTEST"],
+            etf_table=const.DB.TABLES.HistorySimilarity.REAL_BACKTEST,
             sizer="all",
             tp_pct=0.0015,
             sl_pct=-0.0008,

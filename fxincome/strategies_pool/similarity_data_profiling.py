@@ -53,7 +53,7 @@ def analyze_similarity_matrix(distance_type: str, perctl: float) -> float:
 
 def analyze_features():
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
-    feats_labels_table = const.DB.HistorySimilarity_TABLES["FEATS_LABELS"]
+    feats_labels_table = const.DB.TABLES.HistorySimilarity.FEATS_LABELS
     data = pd.read_sql(
         f"SELECT * FROM [{feats_labels_table}]", conn, parse_dates=["date"]
     )
@@ -159,7 +159,7 @@ def check_date(distance_type: str):
 
 def analyze_predictions():
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
-    pred_table = const.DB.HistorySimilarity_TABLES["PREDICTIONS"]
+    pred_table = const.DB.TABLES.HistorySimilarity.PREDICTIONS
     data = pd.read_sql(f"SELECT * FROM [{pred_table}]", conn, parse_dates=["date"])
     conn.close()
 

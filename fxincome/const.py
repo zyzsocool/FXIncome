@@ -9,12 +9,31 @@ class PATH:
 class DB:
     DATABASE = "fxincome"
     SQLITE_CONN = f"{PATH.MAIN}fxincome.db"
+    
+    class TABLES:
+        class HistorySimilarity:
+            RAW_FEATURES = "strat.hist_simi.raw_features"
+            RAW_BACKTEST = "strat.hist_simi.raw_backtest"
+            FEATS_LABELS = "strat.hist_simi.temp.feats_labels"
+            PREDICTIONS = "strat.hist_simi.temp.predictions"
+            REAL_BACKTEST = "strat.hist_simi.temp.real_backtest"
+        
+        class IndexEnhancement:
+            CDB_YC = "strat.idx.cdb_yc"
+            CDB_INFO = "strat.idx.cdb_info"
+    
+    # Keeping old structure for backward compatibility (can be removed later)
     HistorySimilarity_TABLES = {
-        "RAW_FEATURES": "strat.hist_simi.raw_features",
-        "RAW_BACKTEST": "strat.hist_simi.raw_backtest",
-        "FEATS_LABELS": "strat.hist_simi.temp.feats_labels",
-        "PREDICTIONS": "strat.hist_simi.temp.predictions",
-        "REAL_BACKTEST": "strat.hist_simi.temp.real_backtest",
+        "RAW_FEATURES": TABLES.HistorySimilarity.RAW_FEATURES,
+        "RAW_BACKTEST": TABLES.HistorySimilarity.RAW_BACKTEST,
+        "FEATS_LABELS": TABLES.HistorySimilarity.FEATS_LABELS,
+        "PREDICTIONS": TABLES.HistorySimilarity.PREDICTIONS,
+        "REAL_BACKTEST": TABLES.HistorySimilarity.REAL_BACKTEST,
+    }
+    # Keeping old structure for backward compatibility (can be removed later)
+    IndexEnhancement_TABLES = {
+        "CDB_YC": TABLES.IndexEnhancement.CDB_YC,
+        "CDB_INFO": TABLES.IndexEnhancement.CDB_INFO,
     }
 
 

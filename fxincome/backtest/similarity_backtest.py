@@ -562,12 +562,12 @@ def read_predictions_prices(
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
     # predictions of Ytm direction
     if pred_table is None:
-        pred_table = const.DB.HistorySimilarity_TABLES["PREDICTIONS"]
+        pred_table = const.DB.TABLES.HistorySimilarity.PREDICTIONS
     bond_pred = pd.read_sql(f"SELECT * FROM [{pred_table}]", conn, parse_dates=["date"])
     bond_pred["date"] = bond_pred["date"].dt.date
 
     if etf_table is None:
-        etf_table = const.DB.HistorySimilarity_TABLES["RAW_BACKTEST"]
+        etf_table = const.DB.TABLES.HistorySimilarity.RAW_BACKTEST
     db_query = f"SELECT * FROM [{etf_table}] WHERE asset_code='{asset_code}'"
     etf_price = pd.read_sql(db_query, conn, parse_dates=["date"])
     etf_price["date"] = etf_price["date"].dt.date
@@ -596,7 +596,7 @@ def analyze_prediction(
     )
 
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
-    feats_labels_table = const.DB.HistorySimilarity_TABLES["FEATS_LABELS"]
+    feats_labels_table = const.DB.TABLES.HistorySimilarity.FEATS_LABELS
     tbond_df = pd.read_sql(
         f"SELECT * FROM [{feats_labels_table}]", conn, parse_dates=["date"]
     )

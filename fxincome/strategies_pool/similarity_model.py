@@ -277,7 +277,7 @@ def predict_yield_chg(
 
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
     result_df.to_sql(
-        const.DB.HistorySimilarity_TABLES["PREDICTIONS"],
+        const.DB.TABLES.HistorySimilarity.PREDICTIONS,
         conn,
         if_exists="replace",
         index=False,

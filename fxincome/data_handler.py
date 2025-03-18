@@ -7,7 +7,7 @@ from fxincome import const, logger
 
 
 def update_strat_hist_simi_raw_featrues(conn):
-    db_table = const.DB.HistorySimilarity_TABLES["RAW_FEATURES"]
+    db_table = const.DB.TABLES.HistorySimilarity.RAW_FEATURES
     begin = pd.read_sql(f"SELECT max(date) FROM [{db_table}]", conn).iat[0, 0]
     end = datetime.today() + timedelta(days=-1)
     wind_data = w.edb("S0059744,S0059749,G0000886,G0000891,000300.SH", begin, end)
@@ -32,7 +32,7 @@ def update_strat_hist_simi_raw_featrues(conn):
 
 
 def update_strat_hist_simi_raw_backtest(asset_code: str, conn):
-    db_table = const.DB.HistorySimilarity_TABLES["RAW_BACKTEST"]
+    db_table = const.DB.TABLES.HistorySimilarity.RAW_BACKTEST
     df = pd.read_sql(
         f"SELECT * FROM [{db_table}] WHERE asset_code='{asset_code}'", conn
     )
