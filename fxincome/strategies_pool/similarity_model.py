@@ -80,7 +80,7 @@ def train_test_split(df: DataFrame, train_ratio: float = 0.8, gap: int = 30):
 
 
 def avg_yield_chg(
-    given_date,
+    given_date: datetime.date,
     simi_matrix_with_yield_chg,
     distance_min: float,
     distance_max: float,
@@ -95,7 +95,7 @@ def avg_yield_chg(
     are those within the range specified by distance_min(included) and distance_max(NOT included).
 
     Args:
-        given_date: Calculate other dates' weighted average yield change similar to this date.
+        given_date(datetime.date): Calculate other dates' weighted average yield change similar to this date.
                     Its type should be of the same type as the date columns of simi_matrix_with_yield_chg.
         simi_matrix_with_yield_chg (DataFrame): The similarity matrix with yield changes.
         distance_min (float): included.
@@ -277,7 +277,7 @@ def predict_yield_chg(
 
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
     result_df.to_sql(
-        const.DB.HistorySimilarity_TABLES["PREDICTIONS"],
+        const.DB.TABLES.HistorySimilarity.PREDICTIONS,
         conn,
         if_exists="replace",
         index=False,
@@ -303,8 +303,10 @@ def main():
     #     gap=30,
     # )
 
-    start_date = datetime.date(2020, 4, 29)
-    end_date = datetime.date(2021, 8, 2)
+    # start_date = datetime.date(2020, 4, 29)
+    # end_date = datetime.date(2021, 8, 2)
+    start_date = datetime.date(2022, 1, 25)
+    end_date = datetime.date(2024, 5, 30)
     dates_to_predict = [
         start_date + datetime.timedelta(days=x)
         for x in range((end_date - start_date).days + 1)

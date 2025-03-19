@@ -2,5 +2,11 @@
 /tools/*.xlsx
 /examples/results/
 /fxincome/spread/myeasylog.log
-/.idea/
 /fxincome/backtest/log/
+/fxincome/.pytest_cache/
+/fxincome/__pycache__/
+/fxincome/backtest/__pycache__/
+/fxincome/spread/__pycache__/
+/tests/__pycache__/
+/__pycache__/
+/fxincome/strategies_pool/__pycache__/

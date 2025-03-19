@@ -1,48 +1,59 @@
-import pandas as pd
 import os
 import sqlite3
+import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 from fxincome import const, logger
 from ydata_profiling import ProfileReport
 
 ROOT_PATH = const.PATH.STRATEGY_POOL
 
 
-def analyze_euclidean():
-    src_name = "similarity_matrix_euclidean.csv"
+def analyze_similarity_matrix(distance_type: str, perctl: float) -> float:
+    """
+    ProfileReport for the similarity matrix. Return the distance threshold of given percentile.
+    Args:
+        distance_type(str): "euclidean" or "cosine"
+        perctl(float): percentile to calculate the distance
+
+    Returns:
+        distance_threshold(float): distance of given percentile
+    """
+    if distance_type == "euclidean":
+        src_name = const.HistorySimilarity.SIMI_EUCLIDEAN
+        title = "Euclidean Distance Report"
+    elif distance_type == "cosine":
+        src_name = const.HistorySimilarity.SIMI_COSINE
+        title = "Cosine Distance Report"
+    else:
+        raise ValueError("Invalid distance type")
+
     data = pd.read_csv(os.path.join(ROOT_PATH, src_name)).drop(columns=["date"])
     data = data.dropna().reset_index(drop=True)
 
+    # Keep only one of each pair of dates
+    data = data.where(np.tril(np.ones(data.shape), k=-1).astype(bool))
+
     # Flatten the matrix to a vector
     flattend_data = pd.DataFrame(data.values.ravel(), columns=["distance"])
+    flattend_data = flattend_data.dropna().reset_index(drop=True)
+
     profile = ProfileReport(
         flattend_data,
-        title="Euclidean Distance Report",
+        title=title,
         correlations=None,
         interactions=None,
     )
     profile.to_file(f"d:/{src_name}.html")
+    distance_threshold = flattend_data["distance"].quantile(perctl)
+    logger.info(f"Distance threshold at {perctl} percentile: {distance_threshold}")
 
-
-def analyze_cosine():
-    src_name = "similarity_matrix_cosine.csv"
-    data = pd.read_csv(os.path.join(ROOT_PATH, src_name)).drop(columns=["date"])
-    data = data.dropna().reset_index(drop=True)
-
-    # Flatten the matrix to a vector
-    flattend_data = pd.DataFrame(data.values.ravel(), columns=["distance"])
-    profile = ProfileReport(
-        flattend_data,
-        title="Cosine Distance Report",
-        correlations=None,
-        interactions=None,
-    )
-    profile.to_file(f"d:/{src_name}.html")
+    return distance_threshold
 
 
 def analyze_features():
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
-    feats_labels_table = const.DB.HistorySimilarity_TABLES["FEATS_LABELS"]
+    feats_labels_table = const.DB.TABLES.HistorySimilarity.FEATS_LABELS
     data = pd.read_sql(
         f"SELECT * FROM [{feats_labels_table}]", conn, parse_dates=["date"]
     )
@@ -63,7 +74,13 @@ def analyze_features():
 
 
 def distance_histogram(distance_type: str):
-    src_name = f"similarity_matrix_{distance_type}.csv"
+    if distance_type == "euclidean":
+        src_name = const.HistorySimilarity.SIMI_EUCLIDEAN
+    elif distance_type == "cosine":
+        src_name = const.HistorySimilarity.SIMI_COSINE
+    else:
+        raise ValueError("Invalid distance type")
+
     data_path = os.path.join(const.PATH.STRATEGY_POOL, src_name)
     distance_df = pd.read_csv(data_path)
 
@@ -142,7 +159,7 @@ def check_date(distance_type: str):
 
 def analyze_predictions():
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
-    pred_table = const.DB.HistorySimilarity_TABLES["PREDICTIONS"]
+    pred_table = const.DB.TABLES.HistorySimilarity.PREDICTIONS
     data = pd.read_sql(f"SELECT * FROM [{pred_table}]", conn, parse_dates=["date"])
     conn.close()
 
@@ -159,8 +176,7 @@ def analyze_predictions():
 
 # distance_histogram("euclidean")
 # check_date("cosine")
-analyze_features()
-# analyze_euclidean()
-# analyze_cosine()
+# analyze_features()
+analyze_similarity_matrix("euclidean", 0.01)
 # compare_inverse_weights("euclidean")
 # analyze_predictions()

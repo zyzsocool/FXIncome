@@ -163,7 +163,7 @@ def read_processed_data(distance_type: str):
         simi_file = const.HistorySimilarity.SIMI_COSINE
 
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
-    feats_labels_table = const.DB.HistorySimilarity_TABLES["FEATS_LABELS"]
+    feats_labels_table = const.DB.TABLES.HistorySimilarity.FEATS_LABELS
     feature_label_df = pd.read_sql(
         f"SELECT * FROM [{feats_labels_table}]", conn, parse_dates=["date"]
     )
@@ -199,7 +199,7 @@ def process_data():
     """
 
     conn = sqlite3.connect(const.DB.SQLITE_CONN)
-    raw_feature_table = const.DB.HistorySimilarity_TABLES["RAW_FEATURES"]
+    raw_feature_table = const.DB.TABLES.HistorySimilarity.RAW_FEATURES
     feats_labels = pd.read_sql(
         f"SELECT * FROM [{raw_feature_table}]", conn, parse_dates=["date"]
     )
@@ -217,7 +217,7 @@ def process_data():
         hs300_pctl_window=const.HistorySimilarity.PARAMS["HS300_PCTL_WINDOW"],
     )
     feats_labels.to_sql(
-        const.DB.HistorySimilarity_TABLES["FEATS_LABELS"],
+        const.DB.TABLES.HistorySimilarity.FEATS_LABELS,
         conn,
         if_exists="replace",
         index=False,
