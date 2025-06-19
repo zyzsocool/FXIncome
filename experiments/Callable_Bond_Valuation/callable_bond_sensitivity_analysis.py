@@ -6,18 +6,12 @@ from typing import Any
 import logging
 
 # Import FinancePy classes
-from financepy.products.bonds.bond import Bond
 from financepy.utils.date import Date
 from financepy.utils.frequency import FrequencyTypes
 from financepy.utils.day_count import DayCountTypes
 
-from experiments.Callable_Bond_Valuation.interest_rate_simulator import (
-    InterestRateSimulator,
-)
-from experiments.Callable_Bond_Valuation.callable_bond_valuer import (
-    CallableBond,
-    CallableBondValuer,
-)
+from interest_rate_simulator import InterestRateSimulator
+from callable_bond_valuer import CallableBond, CallableBondValuer
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -469,8 +463,8 @@ class CallableBondSensitivityAnalyzer:
         plt.tight_layout()
         
         if save_plots:
-            plt.savefig('callable_bond_sensitivity_analysis.png', dpi=300, bbox_inches='tight')
-            logger.info("Sensitivity plots saved as 'callable_bond_sensitivity_analysis.png'")
+            plt.savefig('experiments/Callable_Bond_Valuation/results/sensitivity_analysis.png', dpi=300, bbox_inches='tight')
+            logger.info("Sensitivity plots saved as 'sensitivity_analysis.png'")
         
         plt.show()
     
@@ -505,8 +499,8 @@ class CallableBondSensitivityAnalyzer:
         plt.tight_layout()
         
         if save_plots:
-            plt.savefig('callable_bond_call_probability_sensitivity.png', dpi=300, bbox_inches='tight')
-            logger.info("Call probability plots saved as 'callable_bond_call_probability_sensitivity.png'")
+            plt.savefig('experiments/Callable_Bond_Valuation/results/call_probability_sensitivity.png', dpi=300, bbox_inches='tight')
+            logger.info("Call probability plots saved as 'call_probability_sensitivity.png'")
         
         plt.show()
     
@@ -561,7 +555,7 @@ class CallableBondSensitivityAnalyzer:
         try:
             # Save each sensitivity analysis as CSV
             for param_name, df in self.sensitivity_results.items():
-                csv_filename = f"{filename_prefix}_{param_name}_results.csv"
+                csv_filename = f"experiments/Callable_Bond_Valuation/results/{param_name}_results.csv"
                 df.to_csv(csv_filename, index=False)
                 logger.info(f"Saved {param_name} sensitivity results to {csv_filename}")
             
@@ -579,7 +573,7 @@ class CallableBondSensitivityAnalyzer:
                 })
             
             summary_df = pd.DataFrame(summary_data)
-            summary_csv_filename = f"{filename_prefix}_summary.csv"
+            summary_csv_filename = f"experiments/Callable_Bond_Valuation/results/sensitivity_summary.csv"
             summary_df.to_csv(summary_csv_filename, index=False)
             logger.info(f"Saved summary results to {summary_csv_filename}")
             
@@ -605,7 +599,7 @@ def main():
         base_straight_bond_ytm=base_straight_bond_ytm,
         base_sigma=base_sigma,
         call_protection_years=1,
-        num_simulations=1000,  # Reduced for faster execution
+        num_simulations=10000,  # Reduced for faster execution
     )
     
     try:
@@ -613,10 +607,10 @@ def main():
         logger.info("Starting comprehensive sensitivity analysis...")
         
         # Define custom ranges for more targeted analysis
-        coupon_range = np.arange(0.03, 0.07, 0.005).tolist()  # 3% to 7%
+        coupon_range = np.arange(0.01, 0.10, 0.005).tolist()  # 1% to 10%
         maturity_range = [3, 4, 5, 6, 7, 8, 10]  # Years
-        sigma_range = np.arange(0.005, 0.020, 0.0025).tolist()  # 0.5% to 2%
-        ytm_range = np.arange(0.025, 0.065, 0.005).tolist()  # 2.5% to 6.5%
+        sigma_range = np.arange(0.005, 0.050, 0.0010).tolist()  # 0.5% to 5%
+        ytm_range = np.arange(0.01, 0.10, 0.005).tolist()  # 1% to 10%
         
         results = analyzer.run_full_sensitivity_analysis(
             coupon_range=coupon_range,

@@ -87,9 +87,7 @@ class InterestRateSimulator:
             # Assume uniform daily spacing if dates are not datetime
             dt_values = np.full(len(rates) - 1, 1 / 365.25)
 
-        print(
-            f"Calibrating CIR model with {len(dt_values)} data points..."
-        )
+        print(f"Calibrating CIR model with {len(dt_values)} data points...")
 
         def cir_log_likelihood(params: np.ndarray) -> float:
             """Calculate negative log-likelihood for CIR model."""
@@ -182,8 +180,8 @@ class InterestRateSimulator:
 
         # Parameter bounds
         bounds = [
-            (0.001, 2.0),  # kappa: mean reversion speed
-            (0.001, 0.2),  # theta: long-term mean
+            (0.001, 5.0),  # kappa: mean reversion speed
+            (0.001, 0.07),  # theta: long-term mean
             (0.001, 0.5),  # sigma: volatility
         ]
 
@@ -527,6 +525,145 @@ class InterestRateSimulator:
         plt.show()
 
 
+def calculate_history_stats(
+    csv_path: str,
+    start_date: datetime.datetime,
+    end_date: datetime.datetime,
+    date_col: str = "date",
+    rate_col: str = "rate",
+) -> dict[str, float]:
+    trade_day_df = pd.read_csv(csv_path, parse_dates=[date_col])
+    print(f"Loaded {len(trade_day_df)} records")
+    trade_day_df = trade_day_df[
+        (trade_day_df[date_col] >= start_date) & (trade_day_df[date_col] <= end_date)
+    ]
+
+    """Statistics of historical yield data in trade days."""
+    trade_day_df["dr"] = trade_day_df[rate_col].diff()
+    trade_day_df = trade_day_df.dropna()
+    years = ((trade_day_df[date_col].max() - trade_day_df[date_col].min()).days + 1) / 365
+    days_per_year = len(trade_day_df) / years
+
+    # Calculate trade day statistics
+    trade_day_stats = {}
+    trade_day_stats["days_per_year"] = days_per_year
+    trade_day_stats["mean"] = trade_day_df[rate_col].mean()
+    trade_day_stats["std"] = trade_day_df[rate_col].std()
+    trade_day_stats["min"] = trade_day_df[rate_col].min()
+    trade_day_stats["max"] = trade_day_df[rate_col].max()
+    trade_day_stats["dr_mean"] = trade_day_df["dr"].mean()
+    trade_day_stats["dr_std"] = trade_day_df["dr"].std()
+    trade_day_stats["dr_std_year"] = trade_day_stats["dr_std"] * np.sqrt(days_per_year)
+    trade_day_stats["dr_min"] = trade_day_df["dr"].min()
+    trade_day_stats["dr_max"] = trade_day_df["dr"].max()
+
+    # Create new dataframe with holidays filled using last trade day's rates
+    print(f"\nCreating calendar day dataframe with holidays filled...")
+
+    # Create complete date range (including holidays/weekends)
+    complete_date_range = pd.date_range(start=start_date, end=end_date, freq="D")
+
+    # Set date column as index for easier reindexing
+    trade_day_indexed = trade_day_df.set_index(date_col)
+
+    # Reindex to complete date range and forward fill missing values
+    calendar_day_df = trade_day_indexed.reindex(complete_date_range)
+    calendar_day_df[rate_col] = calendar_day_df[rate_col].ffill()
+
+    # Reset index to get date column back
+    calendar_day_df = calendar_day_df.reset_index()
+    calendar_day_df.rename(columns={"index": date_col}, inplace=True)
+
+    # Calculate dr for calendar day dataframe
+    calendar_day_df["dr"] = calendar_day_df[rate_col].diff()
+    calendar_day_df = calendar_day_df.dropna()
+    years = ((calendar_day_df[date_col].max() - calendar_day_df[date_col].min()).days + 1) / 365
+    calendar_days_per_year = len(calendar_day_df) / years
+
+    # Calculate calendar day statistics
+    calendar_day_stats = {}
+    calendar_day_stats["days_per_year"] = calendar_days_per_year
+    calendar_day_stats["mean"] = calendar_day_df[rate_col].mean()
+    calendar_day_stats["std"] = calendar_day_df[rate_col].std()
+    calendar_day_stats["min"] = calendar_day_df[rate_col].min()
+    calendar_day_stats["max"] = calendar_day_df[rate_col].max()
+    calendar_day_stats["dr_mean"] = calendar_day_df["dr"].mean()
+    calendar_day_stats["dr_std"] = calendar_day_df["dr"].std()
+    calendar_day_stats["dr_std_year"] = calendar_day_stats["dr_std"] * np.sqrt(
+        calendar_days_per_year
+    )
+    calendar_day_stats["dr_min"] = calendar_day_df["dr"].min()
+    calendar_day_stats["dr_max"] = calendar_day_df["dr"].max()
+
+    # Print statistics comparison
+    print(f"\n=== TRADE DAY STATISTICS ===")
+    print(f"Number of observations: {len(trade_day_df)}")
+    print(f"Days per year: {trade_day_stats['days_per_year']:.1f}")
+    print(f"Rate statistics:")
+    print(f"  Mean: {trade_day_stats['mean']:.2%}")
+    print(f"  Std:  {trade_day_stats['std']:.2%}")
+    print(f"  Min:  {trade_day_stats['min']:.2%}")
+    print(f"  Max:  {trade_day_stats['max']:.2%}")
+    print(f"Daily rate change (dr) statistics:")
+    print(f"  Mean: {trade_day_stats['dr_mean']:.2%}")
+    print(f"  Std:  {trade_day_stats['dr_std']:.2%}")
+    print(f"  Std (annualized): {trade_day_stats['dr_std_year']:.2%}")
+    print(f"  Min:  {trade_day_stats['dr_min']:.2%}")
+    print(f"  Max:  {trade_day_stats['dr_max']:.2%}")
+
+    print(f"\n=== CALENDAR DAY STATISTICS (with holidays filled) ===")
+    print(f"Number of observations: {len(calendar_day_df)}")
+    print(f"Days per year: {calendar_day_stats['days_per_year']:.1f}")
+    print(f"Rate statistics:")
+    print(f"  Mean: {calendar_day_stats['mean']:.2%}")
+    print(f"  Std:  {calendar_day_stats['std']:.2%}")
+    print(f"  Min:  {calendar_day_stats['min']:.2%}")
+    print(f"  Max:  {calendar_day_stats['max']:.2%}")
+    print(f"Daily rate change (dr) statistics:")
+    print(f"  Mean: {calendar_day_stats['dr_mean']:.2%}")
+    print(f"  Std:  {calendar_day_stats['dr_std']:.2%}")
+    print(f"  Std (annualized): {calendar_day_stats['dr_std_year']:.2%}")
+    print(f"  Min:  {calendar_day_stats['dr_min']:.2%}")
+    print(f"  Max:  {calendar_day_stats['dr_max']:.2%}")
+
+    print(f"\n=== COMPARISON ===")
+    print(
+        f"Additional days from filling holidays: {len(calendar_day_df) - len(trade_day_df)}"
+    )
+    print(
+        f"Trade day volatility vs Calendar day volatility: {trade_day_stats['dr_std']:.2%} vs {calendar_day_stats['dr_std']:.2%}"
+    )
+    print(
+        f"Annualized volatility ratio (trade/calendar): {trade_day_stats['dr_std_year']/calendar_day_stats['dr_std_year']:.3f}"
+    )
+
+    try:
+        from ydata_profiling import ProfileReport
+
+        # Generate profile for trade day data
+        trade_day_profile = ProfileReport(trade_day_df, title="Trade Day Data Profile")
+        trade_day_profile.to_file("experiments/Callable_Bond_Valuation/results/trade_day_profile.html")
+        print("\nTrade day profile saved to trade_day_profile.html")
+
+        # Generate profile for calendar day data
+        calendar_day_profile = ProfileReport(
+            calendar_day_df, title="Calendar Day Data Profile"
+        )
+        calendar_day_profile.to_file(
+            "experiments/Callable_Bond_Valuation/results/calendar_day_profile.html"
+        )
+        print("Calendar day profile saved to calendar_day_profile.html")
+
+    except ImportError:
+        print(
+            "\nWarning: ydata_profiling not installed. Install with: pip install ydata-profiling"
+        )
+    except Exception as e:
+        print(f"\nError generating profiles: {e}")
+
+    return trade_day_stats, calendar_day_stats
+
+
 def main():
     # Initialize simulator
     simulator = InterestRateSimulator(model="cir")
@@ -536,7 +673,7 @@ def main():
     # 2020-01-01,0.0150
     simulator.load_and_calibrate_from_csv(
         csv_path="experiments/Callable_Bond_Valuation/5y_treasury_2020_2025.csv",
-        start_date=datetime.datetime(2024, 1, 1),
+        start_date=datetime.datetime(2020, 1, 1),
         end_date=datetime.datetime(2025, 5, 27),
     )
 
@@ -561,3 +698,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # calculate_history_stats(
+    #     "experiments/Callable_Bond_Valuation/5y_treasury_2020_2025.csv",
+    #     datetime.datetime(2023, 1, 1),
+    #     datetime.datetime(2025, 5, 27),
+    # )

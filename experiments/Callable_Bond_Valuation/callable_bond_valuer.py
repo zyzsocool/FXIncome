@@ -438,7 +438,7 @@ class CallableBondValuer:
             call_price = self.callable_bond.face_value + self.call_premium
 
             # Issuer calls if it's beneficial (continuation value > call price)
-            if continuation_value > call_price * 1.02:  # 2% buffer
+            if continuation_value > call_price * 1.01:  # 1% buffer
                 # Bond is called. Calculate PV of (coupons up to call_date + call_price at call_date)
 
                 effective_cf_dates = []
@@ -754,12 +754,12 @@ def main():
     # r0 will be calibrated later to match the straight bond price
     rate_simulator = InterestRateSimulator(
         r0=0,
-        mu=straight_bond_ytm,  # Set long-term mean to market YTM
-        sigma=0.10,
+        mu=0,  
+        sigma=0.00989,
         days=days,
         days_of_year=days_of_year,
         num_paths=5000,
-        model="cir",
+        model="abm",
         kappa=2.0,
     )
 
