@@ -1,18 +1,14 @@
 ---
-description: Pandas and Scikit-learn Guide
+description: 
 globs: *.py
 alwaysApply: false
 ---
-# Pandas (scikit-learn Guide)
-
-# Pandas and Scikit-learn: A Comprehensive Guide
-
-## Introduction
-This guide is designed for data analysts and machine learning practitioners who use Python libraries such as Pandas, Scikit-learn, Matplotlib, Seaborn, and NumPy. It provides best practices for data manipulation, visualization, and machine learning workflows.
-
+---
+globs: *.py
+---
 ## Key Principles
-- **Operating System**: We developing codes in Windows.
-- **Conciseness and Accuracy**: Write concise, technical responses with accurate Python examples.
+- **Operating System**: Windows. Use windows path format. Use Windows-compatible commands.
+- **Test Code**: Write test code in different files. Do not mix test code and functional code in one file. Pytest files in the /tests directory are preferred.
 - **Readability and Reproducibility**: Prioritize readability and reproducibility in data analysis workflows.
 - **Vectorized Operations**: Prefer vectorized operations over explicit loops for better performance.
 - **Descriptive Variable Names**: Use descriptive variable names that reflect the data they contain.
@@ -22,16 +18,15 @@ This guide is designed for data analysts and machine learning practitioners who 
 - **Black Formatter Compliance**: Follow Black Formatter style for Python code formatting.
 
 ## Data Analysis and Manipulation
-- **Pandas**: Use Pandas for data manipulation and analysis.
+- **Pandas**: Use **Pandas** for data manipulation and analysis.
 - **Method Chaining**: Prefer method chaining for data transformations when possible.
-- **Data Selection**: Use `loc` and `iloc` for explicit data selection.
-- **Groupby Operations**: Utilize `groupby` operations for efficient data aggregation.
 
 ## Visualization
 - **Matplotlib**: Use Matplotlib for low-level plotting control and customization.
 - **Seaborn**: Use Seaborn for statistical visualizations and aesthetically pleasing defaults.
 - **Informative Plots**: Create informative and visually appealing plots with proper labels, titles, and legends.
 - **Color Schemes**: Use appropriate color schemes and consider color-blindness accessibility.
+- **Reusable Plotting Functions**: Create reusable plotting functions for consistent visualizations.
 
 ## Error Handling and Data Validation
 - **Data Quality Checks**: Implement data quality checks at the beginning of analysis.
@@ -40,6 +35,7 @@ This guide is designed for data analysts and machine learning practitioners who 
 - **Logging**: Capture context in logs for better debugging. Use logging instead of print().
 - **Data Validation**: Validate data types and ranges to ensure data integrity.
 - **Typing Annotation** Always add typing annotations to each function or class, including return types when necessary.
+- **Type Hints**: Use built-in type hints without importing from typing module as long as possible.
 
 ## Performance Optimization
 - **Vectorized Operations**: Use vectorized operations in Pandas and NumPy for improved performance.
@@ -48,21 +44,15 @@ This guide is designed for data analysts and machine learning practitioners who 
 
 ## Dependencies
 - **Pandas**: For data manipulation and analysis.
-- **NumPy**: For numerical operations.
 - **Matplotlib**: For plotting and visualization.
 - **Seaborn**: For statistical visualizations.
-- **Jupyter**: For interactive computing.
 - **Scikit-learn**: For machine learning tasks.
 
 ## Documentation
 - Document data sources, assumptions, and methodologies clearly.
 - **Add descriptive docstrings** to all Python functions and classes.
 - **Update existing docstrings** if necessary.
-
-## Key Conventions
-- **Data Exploration**: Begin analysis with data exploration and summary statistics.
-- **Reusable Plotting Functions**: Create reusable plotting functions for consistent visualizations.
-- **Version Control**: Use version control (e.g., Git) for tracking changes in notebooks and scripts.
+- **Docstring Style**: Google.
 
 ## References
-Refer to the official documentation of Pandas, Matplotlib, and Jupyter for best practices and up-to-date APIs.
+Refer to the official documentation of Pandas, Matplotlib for best practices and up-to-date APIs.
